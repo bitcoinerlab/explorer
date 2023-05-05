@@ -1,4 +1,3 @@
-//TODO: checkFeeEstimates
 /**
  * Interface describing a client that connects to a Blockchain explorer.
  * For example, a client to an Esplora Server or a client to an Electrum Server.
@@ -6,7 +5,7 @@
  * Devs adding new Explorer clients to bitcoinerlab must implement this
  * interface.
  */
-export interface IExplorer {
+export interface Explorer {
   /**
    * Connect to the server.
    * @async
@@ -23,10 +22,10 @@ export interface IExplorer {
    * Get the utxos of an address.
    * @async
    * @param address A Bitcoin address
-   * @returns An array of utxos objects like this: `[{ tx, n },...]`,
-   * where `tx` is a string in hex format and `n` is an integer >= 0.
+   * @returns An array of utxos objects like this: `[{ txHex, vout },...]`,
+   * where `txHex` is a string in hex format and `vout` is an integer >= 0.
    */
-  fetchUtxos(address: string): Promise<Array<{ tx: string; n: number }>>;
+  fetchUtxos(address: string): Promise<Array<{ txHex: string; vout: number }>>;
 
   /**
    * Get the balance of an address and find out whether the address ever

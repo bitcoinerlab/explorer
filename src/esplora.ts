@@ -1,8 +1,8 @@
-//import { checkFeeEstimates } from '../check';
+import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
-import type { IExplorer } from './interface';
+import type { Explorer } from './interface';
 
 async function esploraFetchJson(
   ...args: Parameters<typeof fetch>
@@ -45,9 +45,9 @@ function isValidHttpUrl(string: string): boolean {
 }
 
 /**
- * Implements an {@link IExplorer} Interface for an Esplora server.
+ * Implements an {@link Explorer} Interface for an Esplora server.
  */
-export class EsploraExplorer implements IExplorer {
+export class EsploraExplorer implements Explorer {
   #url: string;
 
   /**
@@ -71,9 +71,11 @@ export class EsploraExplorer implements IExplorer {
   }
 
   /**
-   * Implements {@link IExplorer#fetchUtxos}.
+   * Implements {@link Explorer#fetchUtxos}.
    */
-  async fetchUtxos(address: string): Promise<Array<{ tx: string; n: number }>> {
+  async fetchUtxos(
+    address: string
+  ): Promise<Array<{ txHex: string; vout: number }>> {
     const utxos = [];
 
     const fetchedUtxos = await esploraFetchJson(
@@ -88,14 +90,14 @@ export class EsploraExplorer implements IExplorer {
     for (const utxo of fetchedUtxos) {
       if (utxo.status.confirmed === true) {
         const tx = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
-        utxos.push({ tx, n: parseInt(utxo.vout) });
+        utxos.push({ txHex: tx, vout: parseInt(utxo.vout) });
       }
     }
     return utxos;
   }
 
   /**
-   * Implements {@link IExplorer#fetchAddress}.
+   * Implements {@link Explorer#fetchAddress}.
    */
   async fetchAddress(
     address: string
@@ -116,11 +118,11 @@ export class EsploraExplorer implements IExplorer {
   }
 
   /**
-   * Implements {@link IExplorer#fetchFeeEstimates}.
+   * Implements {@link Explorer#fetchFeeEstimates}.
    */
   async fetchFeeEstimates(): Promise<Record<string, number>> {
     const feeEstimates = await esploraFetchJson(`${this.#url}/fee-estimates`);
-    //checkFeeEstimates(feeEstimates);
+    checkFeeEstimates(feeEstimates as Record<string, number>);
     return feeEstimates as Record<string, number>;
   }
 }

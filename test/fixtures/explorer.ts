@@ -1,90 +1,65 @@
-//import {
-//  LEGACY,
-//  NATIVE_SEGWIT,
-//  NESTED_SEGWIT,
-//  ESPLORA_LOCAL_REGTEST_URL,
-//  ELECTRUM_LOCAL_REGTEST_HOST,
-//  ELECTRUM_LOCAL_REGTEST_PORT,
-//  ELECTRUM_LOCAL_REGTEST_PROTOCOL
-//} from '../../src/constants';
-//import { networks } from '../../src/networks';
-
 export const ESPLORA = 'ESPLORA';
 export const ELECTRUM = 'ELECTRUM';
-
 //Use a tool such as: https://iancoleman.io/bip39/
+//And / or: https://codesandbox.io/s/sweet-meadow-vessce?file=/index.ts
 export const fixtures = {
-  //local: {
-  //  mnemonic:
-  //    'caution help average spoil brain enforce balcony siege volcano snap child ugly',
-  //  network: networks.regtest,
-  //  servers: [
-  //    {
-  //      service: ELECTRUM,
-  //      host: ELECTRUM_LOCAL_REGTEST_HOST,
-  //      port: ELECTRUM_LOCAL_REGTEST_PORT,
-  //      protocol: ELECTRUM_LOCAL_REGTEST_PROTOCOL,
-  //      network: networks.regtest
-  //    },
-  //    {
-  //      service: ESPLORA,
-  //      url: ESPLORA_LOCAL_REGTEST_URL
-  //    }
-  //  ],
-  //  unusedAddress: '2N4HNDu7u2WV2XXbMV2e38RjUAiosbeKwBH',
-  //  burnAddress: '2N5vEX6xsMhxDLPa8GGXJHnYVh2BwTtvq8V',
-  //  fundingDescriptors: [
-  //    {
-  //      purpose: LEGACY,
-  //      accountNumber: 0,
-  //      index: 0,
-  //      isChange: false,
-  //      //2 BTC
-  //      value: 200000000,
-  //      address: 'mkMjHzQCpx1xcvRuJ86vSePM31wbMXoHQA'
-  //    },
-  //    {
-  //      purpose: LEGACY,
-  //      accountNumber: 0,
-  //      index: 3,
-  //      isChange: false,
-  //      //1 BTC
-  //      value: 100000000,
-  //      address: 'mg8qpQbxkko9aAgMFCZTNk8zyxBRdUfy3o'
-  //    },
-  //    {
-  //      purpose: NATIVE_SEGWIT,
-  //      accountNumber: 0,
-  //      index: 5,
-  //      isChange: false,
-  //      //0.2 BTC
-  //      value: 20000000,
-  //      address: 'bcrt1qprtxrmghxjsytqpurwspnes87l8xgnznz3t4zw'
-  //    },
-  //    {
-  //      purpose: NATIVE_SEGWIT,
-  //      accountNumber: 1,
-  //      index: 8,
-  //      isChange: false,
-  //      //0.9 BTC
-  //      value: 90000000,
-  //      address: 'bcrt1qptap2w5x9lztclzqk8p2wmkvq08nnpt5d3zfgn'
-  //    },
-  //    {
-  //      purpose: NESTED_SEGWIT,
-  //      accountNumber: 0,
-  //      index: 1,
-  //      isChange: true,
-  //      //0.8 BTC
-  //      value: 80000000,
-  //      address: '2N3wTSwsNSYAUB6r97bw3EN3WzwWHuAbi4G'
-  //    }
-  //  ]
-  //},
-  public: {
-    mnemonic:
-      'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
-    //network: networks.bitcoin,
+  regtest: {
+    mnemonic: `caution help average spoil brain enforce balcony siege volcano snap child ugly`,
+    //Don't send anything here:
+    unusedAddress: '2N4HNDu7u2WV2XXbMV2e38RjUAiosbeKwBH',
+    //Spend utxos here so that it has value:0, but used true:
+    burnAddress: '2N5vEX6xsMhxDLPa8GGXJHnYVh2BwTtvq8V',
+    //Descriptors below created with
+    //https://codesandbox.io/s/sweet-meadow-vessce?file=/index.ts
+    descriptors: [
+      {
+        //purpose: LEGACY,
+        //accountNumber: 0,
+        //index: 0,
+        //isChange: false,
+        //2 BTC
+        value: 200000000,
+        expression: `pkh([6caa26c2/44'/1'/0']tpubDD2Ua3TWLrEL3HgoT9BV2yN41WKLrZmyYAJdHb1uV1pBsfi3FjfRVxhqJHLr9KqmX8oSRb5cuQ13UuTNFPS2rbLv6FhndYqdoByNzvSJXyw/0/0)`
+      },
+      {
+        //purpose: LEGACY,
+        //accountNumber: 0,
+        //index: 3,
+        //isChange: false,
+        //1 BTC
+        value: 100000000,
+        expression: `pkh([6caa26c2/44'/1'/0']tpubDD2Ua3TWLrEL3HgoT9BV2yN41WKLrZmyYAJdHb1uV1pBsfi3FjfRVxhqJHLr9KqmX8oSRb5cuQ13UuTNFPS2rbLv6FhndYqdoByNzvSJXyw/0/3)`
+      },
+      {
+        //purpose: NATIVE_SEGWIT,
+        //accountNumber: 0,
+        //index: 5,
+        //isChange: false,
+        //0.2 BTC
+        value: 20000000,
+        expression: `wpkh([6caa26c2/84'/1'/0']tpubDDJBmwn6ZhezcdYVYoJkUQGfAHQiFq8VQvSyx5ccbVe9MaySWaKYgcSFKqVX8rNsHVWHgVortksWo3E83FocMK7msF1NT6ATLP4fejD3VLk/0/5)`
+      },
+      {
+        //purpose: NATIVE_SEGWIT,
+        //accountNumber: 1,
+        //index: 8,
+        //isChange: false,
+        //0.9 BTC
+        value: 90000000,
+        expression: `wpkh([6caa26c2/84'/1'/1']tpubDDJBmwn6ZhezfVksk8FXPyRQWPtB9gmbNarRiMntCsY5w9NpJZ4VyoaGtPLn312nC1tVc4AjDWXbgUGWBPHQC4ep5yYDjKBLFLEecpkepk2/0/8)`
+      },
+      {
+        //purpose: NESTED_SEGWIT,
+        //accountNumber: 0,
+        //index: 1,
+        //isChange: true,
+        //0.8 BTC
+        value: 80000000,
+        expression: `sh(wpkh([6caa26c2/49'/1'/0']tpubDDPr5on5VEVzS8FXec5ybmcehAPsQHvqZGhvcxpRjj1WVoofcYNbCcVGpz9tTM1aXUGhruYNYF8q7VZB2JmNNujRUW49AcENSzp6ov4qSQ6/1/1))`
+      }
+    ]
+  },
+  bitcoin: {
     servers: [
       {
         service: ELECTRUM,
@@ -109,10 +84,5 @@ export const fixtures = {
         service: ELECTRUM
       }
     ]
-    //if (server.network !== networks.regtest) {
-    //  test('fetchFeeEstimates', async () => {
-    //    await explorer.fetchFeeEstimates();
-    //  }, 10000);
-    //}
   }
 };
