@@ -28,7 +28,9 @@ The following methods are shared in all implementations:
 - `fetchAddress(address: string)`: Get the balance and usage information of a Bitcoin address. Returns an object with `used` and `balance` properties. The `used` property is a boolean indicating whether the address has ever received any coins, even if the balance is currently zero. The `balance` property represents the current balance of the address in satoshis.
 - `fetchFeeEstimates()`: Get fee estimates based on confirmation targets. Returns an object with keys representing confirmation targets and values representing the estimated feerate (in sat/vB).
 
-To use the library, import the `EsploraExplorer` or `ElectrumExplorer` classes depending on your desired explorer protocol. Then, create an instance of the class, and use its methods to interact with the explorer. Some methods return Promises, so make sure to use `await` when calling them.
+### Examples
+
+In this section, we demonstrate how to use the existing implementations, Esplora and Electrum, provided by this library. You can also create your own implementations following the `Explorer` interface to work with other services.
 
 Here's an example of how to use the `EsploraExplorer` class:
 
@@ -59,13 +61,20 @@ import { EsploraExplorer } from '@bitcoinerlab/explorer';
 })();
 ```
 
-### Example
+To use the `ElectrumExplorer` class, follow a similar pattern but with different constructor parameters:
 
-This repository includes two implementations of the `Explorer` interface so far - Esplora and Electrum. Users can implement new clients following the `Explorer` interface, and if they adhere to the interface, those implementations will be able to work seamlessly with the @bitcoinerlab ecosystem.
+```javascript
+import { ElectrumExplorer } from '@bitcoinerlab/explorer';
 
-For Esplora, the constructor takes an optional `url` parameter that specifies the API URL for the Esplora server. If no URL is provided, it defaults to the Blockstream.info API.
-
-For Electrum, the constructor takes an object with three properties: `host`, `port`, and `protocol`. The `host` is the server address, `port` is the server port number, and `protocol` is either 'tcp' or 'ssl'.
+async () => {
+  const explorer = new ElectrumExplorer({
+    host: 'electrum.example.com',
+    port: 50002,
+    protocol: 'ssl'
+  });
+  //...
+};
+```
 
 ## Authors and Contributors
 
