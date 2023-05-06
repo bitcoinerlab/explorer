@@ -18,15 +18,46 @@ npm install @bitcoinerlab/explorer
 
 ## Usage
 
-To use this package, you will need to implement an explorer client that adheres to the `Explorer` interface.
+This library provides a unified interface for interacting with Bitcoin Blockchain explorers. Currently, it supports two popular explorers: Esplora and Electrum.
 
-The following methods need to be implemented:
+The following methods are shared in all implementations:
 
 - `connect()`: Connect to the server.
 - `close()`: Close the connection.
 - `fetchUtxos(address: string)`: Get the UTXOs of a Bitcoin address. Returns an array of UTXO objects with the following format: `[{ txHex: string, vout: number },...]`.
-- `fetchAddress(address: string)`: Get the balance and usage information of a Bitcoin address. Returns an object with `used` and `balance` properties.
+- `fetchAddress(address: string)`: Get the balance and usage information of a Bitcoin address. Returns an object with `used` and `balance` properties. The `used` property is a boolean indicating whether the address has ever received any coins, even if the balance is currently zero. The `balance` property represents the current balance of the address in satoshis.
 - `fetchFeeEstimates()`: Get fee estimates based on confirmation targets. Returns an object with keys representing confirmation targets and values representing the estimated feerate (in sat/vB).
+
+To use the library, import the `EsploraExplorer` or `ElectrumExplorer` classes depending on your desired explorer protocol. Then, create an instance of the class, and use its methods to interact with the explorer. Some methods return Promises, so make sure to use `await` when calling them.
+
+Here's an example of how to use the `EsploraExplorer` class:
+
+```javascript
+import { EsploraExplorer } from '@bitcoinerlab/explorer';
+
+(async () => {
+  const explorer = new EsploraExplorer({ url: 'https://blockstream.info/api' });
+
+  // Connect to the Esplora server
+  await explorer.connect();
+
+  // Fetch UTXOs of an address (returns a Promise)
+  const utxos = await explorer.fetchUtxos(
+    'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
+  );
+
+  // Fetch address information (returns a Promise)
+  const addressInfo = await explorer.fetchAddress(
+    'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
+  );
+
+  // Fetch fee estimates (returns a Promise)
+  const feeEstimates = await explorer.fetchFeeEstimates();
+
+  // Close the connection
+  await explorer.close();
+})();
+```
 
 ### Example
 
