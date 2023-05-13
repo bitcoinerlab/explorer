@@ -4,53 +4,8 @@ import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
 import type { Explorer } from './interface';
 
-//https://github.com/Blockstream/esplora/issues/449#issuecomment-1546000515
-class RequestQueue {
-  private queue: (() => void)[] = [];
-  private delayBetweenRequests: number;
-  private lastRequestTime: number = 0;
-
-  constructor(delayBetweenRequests: number) {
-    this.delayBetweenRequests = delayBetweenRequests;
-  }
-
-  async fetch(...args: Parameters<typeof fetch>): Promise<Response> {
-    return new Promise((resolve, reject) => {
-      const fetchTask = async () => {
-        const now = Date.now();
-        const timeSinceLastRequest = now - this.lastRequestTime;
-        if (timeSinceLastRequest < this.delayBetweenRequests) {
-          // If the delay has not passed yet, wait for the remaining time
-          await new Promise(resolve =>
-            setTimeout(
-              resolve,
-              this.delayBetweenRequests - timeSinceLastRequest
-            )
-          );
-        }
-        try {
-          const response = await fetch(...args);
-          this.lastRequestTime = Date.now();
-          resolve(response);
-        } catch (error) {
-          reject(error);
-        }
-      };
-      this.queue.push(fetchTask);
-      this.processQueue();
-    });
-  }
-
-  private processQueue() {
-    if (this.queue.length > 0) {
-      const fetchTask = this.queue.shift();
-      if (fetchTask) fetchTask();
-    }
-  }
-}
-//250 milliseconds between consecutive calls.
-//Blockstream ends up cutting the replies at 200ms consecutive calls
-const requestQueue = new RequestQueue(210);
+import { RequestQueue } from './requestQueue';
+const requestQueue = new RequestQueue();
 
 async function esploraFetch(
   ...args: Parameters<typeof fetch>
