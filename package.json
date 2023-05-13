@@ -16,20 +16,31 @@
     "prepublishOnly": "npm test"
   },
   "jest": {
-    "testPathIgnorePatterns": ["dist/"],
-    "testMatch": ["**/*.test.js"]
+    "testPathIgnorePatterns": [
+      "dist/"
+    ],
+    "testMatch": [
+      "**/*.test.js"
+    ]
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bitcoinerlab/explorer.git"
   },
-  "keywords": ["bitcoin", "explorer", "esplora", "electrum"],
+  "keywords": [
+    "bitcoin",
+    "explorer",
+    "esplora",
+    "electrum"
+  ],
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/bitcoinerlab/explorer/issues"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@bitcoinerlab/descriptors": "^0.2.1",
     "@bitcoinerlab/secp256k1": "^1.0.2",
