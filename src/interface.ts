@@ -8,6 +8,8 @@
  * When referring to scriptHash, this is the scriptHash used for indexing in
  * electrum. Read more here:
  * https://github.com/bitcoinjs/bitcoinjs-lib/issues/990
+ * and
+ * https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes
  */
 export interface Explorer {
   /**

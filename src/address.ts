@@ -1,4 +1,5 @@
 //https://github.com/bitcoinjs/bitcoinjs-lib/issues/990
+//https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes
 import { address as bjsAddress, crypto, Network } from 'bitcoinjs-lib';
 export function addressToScriptHash(address: string, network: Network): string {
   try {
