@@ -2,6 +2,7 @@ import net from 'net';
 import tls from 'tls';
 import ElectrumClient from 'electrum-client';
 import { checkFeeEstimates } from './checkFeeEstimates';
+//API: https://electrumx.readthedocs.io/en/latest/protocol-methods.html
 
 import { networks, Network } from 'bitcoinjs-lib';
 import {
@@ -15,8 +16,8 @@ import {
   ELECTRUM_LOCAL_REGTEST_PORT,
   ELECTRUM_LOCAL_REGTEST_PROTOCOL
 } from './constants';
-import { address as bjsAddress, crypto } from 'bitcoinjs-lib';
 import type { Explorer } from './interface';
+import { addressToScriptHash } from './address';
 
 function defaultElectrumServer(network: Network = networks.bitcoin): {
   host: string;
@@ -42,22 +43,6 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
       protocol: ELECTRUM_LOCAL_REGTEST_PROTOCOL
     };
   } else throw new Error('Error: invalid network');
-}
-
-function addressToScriptHash(address: string, network: Network): string {
-  try {
-    const scriptPubKey = bjsAddress.toOutputScript(address, network);
-    const scriptHash = Buffer.from(crypto.sha256(scriptPubKey))
-      .reverse()
-      .toString('hex');
-    return scriptHash;
-  } catch (error) {
-    throw new Error(
-      `Error converting address to script hash: ${
-        error instanceof Error ? error.message : 'unknown error'
-      }`
-    );
-  }
 }
 
 export class ElectrumExplorer implements Explorer {
@@ -169,14 +154,21 @@ export class ElectrumExplorer implements Explorer {
   /**
    * Implements {@link Explorer#fetchUtxos}.
    */
-  async fetchUtxos(
-    address: string
-  ): Promise<{ txHex: string; vout: number }[]> {
+  async fetchUtxos({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<{ txHex: string; vout: number }[]> {
     this.#assertConnect();
     const utxos: { txHex: string; vout: number }[] = [];
     this.#assertConnect();
+    if (!scriptHash && address)
+      scriptHash = addressToScriptHash(address, this.#network);
+    if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
     const unspents = await this.#client!.blockchainScripthash_listunspent(
-      addressToScriptHash(address, this.#network)
+      scriptHash
     );
     for (const unspent of unspents) {
       if (this.#height - unspent.height >= 5) {
@@ -196,9 +188,18 @@ export class ElectrumExplorer implements Explorer {
   async fetchAddress(
     address: string
   ): Promise<{ balance: number; used: boolean }> {
+    const scriptHash = addressToScriptHash(address, this.#network);
+    return this.fetchScriptHash(scriptHash);
+  }
+
+  /**
+   * Implements {@link Explorer#fetchScriptHash}.
+   * */
+  async fetchScriptHash(
+    scriptHash: string
+  ): Promise<{ balance: number; used: boolean }> {
     this.#assertConnect();
     let used = false;
-    const scriptHash = addressToScriptHash(address, this.#network);
     this.#assertConnect();
     const balance = await this.#client!.blockchainScripthash_getBalance(
       scriptHash

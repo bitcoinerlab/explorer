@@ -97,7 +97,8 @@ for (const regtestExplorer of regtestExplorers) {
         await explorer.fetchAddress(fixtures.regtest.unusedAddress)
       );
       expect(
-        (await explorer.fetchUtxos(fixtures.regtest.unusedAddress)).length
+        (await explorer.fetchUtxos({ address: fixtures.regtest.unusedAddress }))
+          .length
       ).toEqual(0);
       //Do the funding:
       for (const descriptor of fixtures.regtest.descriptors) {
@@ -131,7 +132,7 @@ for (const regtestExplorer of regtestExplorers) {
         expect(used).toEqual(true);
         const expectedUtxos = await regtestUtils.unspents(address);
 
-        const utxos = (await explorer.fetchUtxos(address)).map(utxo => {
+        const utxos = (await explorer.fetchUtxos({ address })).map(utxo => {
           const tx = Transaction.fromHex(utxo.txHex);
           return {
             vout: utxo.vout,

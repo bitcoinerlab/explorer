@@ -4,6 +4,10 @@
  *
  * Devs adding new Explorer clients to bitcoinerlab must implement this
  * interface.
+ *
+ * When referring to scriptHash, this is the scriptHash used for indexing in
+ * electrum. Read more here:
+ * https://github.com/bitcoinjs/bitcoinjs-lib/issues/990
  */
 export interface Explorer {
   /**
@@ -25,7 +29,13 @@ export interface Explorer {
    * @returns An array of utxos objects like this: `[{ txHex, vout },...]`,
    * where `txHex` is a string in hex format and `vout` is an integer >= 0.
    */
-  fetchUtxos(address: string): Promise<Array<{ txHex: string; vout: number }>>;
+  fetchUtxos({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<Array<{ txHex: string; vout: number }>>;
 
   /**
    * Get the balance of an address and find out whether the address ever
@@ -35,6 +45,17 @@ export interface Explorer {
    * @returns An object with 'used' and 'balance' properties.
    */
   fetchAddress(address: string): Promise<{ used: boolean; balance: number }>;
+
+  /**
+   * Get the balance of a scriptHash and find out whether the scriptHash ever
+   * received some coins.
+   * @async
+   * @param scriptHash A Bitcoin scriptHash
+   * @returns An object with 'used' and 'balance' properties.
+   */
+  fetchScriptHash(
+    scriptHash: string
+  ): Promise<{ used: boolean; balance: number }>;
 
   /**
    * Get an object where the key is the confirmation target (in number of blocks)

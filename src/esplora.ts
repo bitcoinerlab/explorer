@@ -7,6 +7,31 @@ import type { Explorer } from './interface';
 import { RequestQueue } from './requestQueue';
 const requestQueue = new RequestQueue();
 
+interface EsploraUtxoStatus {
+  confirmed: boolean;
+  block_height: number | null;
+  block_hash: string | null;
+  block_time: number | null;
+}
+
+interface EsploraUtxo {
+  txid: string;
+  vout: number;
+  value: number;
+  status: EsploraUtxoStatus;
+
+  // Optional fields for Elements-based chains
+  valuecommitment?: string;
+  asset?: string;
+  assetcommitment?: string;
+  nonce?: string;
+  noncecommitment?: string;
+  surjection_proof?: string;
+  range_proof?: string;
+}
+
+type EsploraUtxosResponse = EsploraUtxo[];
+
 async function esploraFetch(
   ...args: Parameters<typeof fetch>
 ): Promise<Response> {
@@ -78,14 +103,20 @@ export class EsploraExplorer implements Explorer {
   /**
    * Implements {@link Explorer#fetchUtxos}.
    */
-  async fetchUtxos(
-    address: string
-  ): Promise<Array<{ txHex: string; vout: number }>> {
+  async fetchUtxos({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<{ txHex: string; vout: number }[]> {
     const utxos = [];
 
-    const fetchedUtxos = await esploraFetchJson(
-      `${this.#url}/address/${address}/utxo`
-    );
+    const fetchedUtxos = (await esploraFetchJson(
+      `${this.#url}/${address ? 'address' : 'scripthash'}/${
+        address || scriptHash
+      }/utxo`
+    )) as EsploraUtxosResponse;
 
     if (!Array.isArray(fetchedUtxos))
       throw new Error(
@@ -95,10 +126,38 @@ export class EsploraExplorer implements Explorer {
     for (const utxo of fetchedUtxos) {
       if (utxo.status.confirmed === true) {
         const tx = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
-        utxos.push({ txHex: tx, vout: parseInt(utxo.vout) });
+        utxos.push({ txHex: tx, vout: utxo.vout });
       }
     }
     return utxos;
+  }
+
+  async fetchAddressOrScriptHash({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<{ used: boolean; balance: number }> {
+    if (!address && !scriptHash) {
+      throw new Error('Either address or scriptHash must be provided.');
+    }
+
+    const path = address ? `address/${address}` : `scripthash/${scriptHash}`;
+    const chain_stats = (
+      (await esploraFetchJson(`${this.#url}/${path}`)) as {
+        chain_stats: {
+          tx_count: number;
+          funded_txo_sum: number;
+          spent_txo_sum: number;
+        };
+      }
+    )['chain_stats'];
+
+    return {
+      used: chain_stats['tx_count'] !== 0,
+      balance: chain_stats['funded_txo_sum'] - chain_stats['spent_txo_sum']
+    };
   }
 
   /**
@@ -107,19 +166,16 @@ export class EsploraExplorer implements Explorer {
   async fetchAddress(
     address: string
   ): Promise<{ used: boolean; balance: number }> {
-    const chain_stats = (
-      (await esploraFetchJson(`${this.#url}/address/${address}`)) as {
-        chain_stats: {
-          tx_count: number;
-          funded_txo_sum: number;
-          spent_txo_sum: number;
-        };
-      }
-    )['chain_stats'];
-    return {
-      used: chain_stats['tx_count'] !== 0,
-      balance: chain_stats['funded_txo_sum'] - chain_stats['spent_txo_sum']
-    };
+    return this.fetchAddressOrScriptHash({ address });
+  }
+
+  /**
+   * Implements {@link Explorer#fetchScriptHash}.
+   */
+  async fetchScriptHash(
+    scriptHash: string
+  ): Promise<{ used: boolean; balance: number }> {
+    return this.fetchAddressOrScriptHash({ scriptHash });
   }
 
   /**
