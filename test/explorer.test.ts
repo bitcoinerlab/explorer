@@ -93,13 +93,15 @@ for (const regtestExplorer of regtestExplorers) {
     });
 
     test('fetchAddress & fetchUtxos', async () => {
-      expect({ balance: 0, used: false }).toEqual(
-        await explorer.fetchAddress(fixtures.regtest.unusedAddress)
-      );
+      expect({
+        balance: 0,
+        txCount: 0,
+        unconfirmedBalance: 0,
+        unconfirmedTxCount: 0
+      }).toEqual(await explorer.fetchAddress(fixtures.regtest.unusedAddress));
       expect(
-        (await explorer.fetchUtxos({ address: fixtures.regtest.unusedAddress }))
-          .length
-      ).toEqual(0);
+        await explorer.fetchUtxos({ address: fixtures.regtest.unusedAddress })
+      ).toEqual(undefined);
       //Do the funding:
       for (const descriptor of fixtures.regtest.descriptors) {
         //First let's burn any possible remaining money out there (from
@@ -127,19 +129,22 @@ for (const regtestExplorer of regtestExplorers) {
           expression: descriptor.expression,
           network
         }).getAddress();
-        const { balance, used } = await explorer.fetchAddress(address);
+        const { balance, txCount } = await explorer.fetchAddress(address);
         expect(balance).toBeGreaterThanOrEqual(descriptor.value);
-        expect(used).toEqual(true);
+        expect(txCount > 0).toEqual(true);
         const expectedUtxos = await regtestUtils.unspents(address);
 
-        const utxos = (await explorer.fetchUtxos({ address })).map(utxo => {
-          const tx = Transaction.fromHex(utxo.txHex);
-          return {
-            vout: utxo.vout,
-            txId: tx.getId(),
-            value: tx.outs[utxo.vout]!.value
-          };
-        });
+        const fetchedUtxos = await explorer.fetchUtxos({ address });
+        const utxos = fetchedUtxos
+          ? Object.values(fetchedUtxos).map(utxo => {
+              const tx = Transaction.fromHex(utxo.txHex);
+              return {
+                vout: utxo.vout,
+                txId: tx.getId(),
+                value: tx.outs[utxo.vout]!.value
+              };
+            })
+          : [];
         expect(utxoArrayToSet(utxos)).toEqual(utxoArrayToSet(expectedUtxos));
       }
       //Now burn all the money
@@ -163,9 +168,9 @@ for (const regtestExplorer of regtestExplorers) {
           expression: descriptor.expression,
           network
         }).getAddress();
-        const { balance, used } = await explorer.fetchAddress(address);
+        const { balance, txCount } = await explorer.fetchAddress(address);
         expect(balance).toEqual(0);
-        expect(used).toEqual(true);
+        expect(txCount > 0).toEqual(true);
       }
     }, 20000);
     test('close', async () => {

@@ -11,6 +11,21 @@
  * and
  * https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes
  */
+
+/**
+ * Represents a UTXO identifier, a combination of the transaction ID and output number.
+ */
+export type UtxoId = string;
+
+/**
+ * Represents a UTXO (Unspent Transaction Output).
+ */
+export type Utxo = {
+  utxoId: UtxoId; // The UTXO identifier, composed of the transaction ID and the
+  // output index, separated by a colon (e.g., "txId:vout").
+  txHex: string; // The transaction ID in hex format.
+  vout: number; // The output index (an integer >= 0).
+};
 export interface Explorer {
   /**
    * Connect to the server.
@@ -37,27 +52,35 @@ export interface Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<Array<{ txHex: string; vout: number }>>;
+  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined>;
 
   /**
    * Get the balance of an address and find out whether the address ever
    * received some coins.
    * @async
    * @param address A Bitcoin address
-   * @returns An object with 'used' and 'balance' properties.
+   * @returns An object with 'balance' & confirmedTxCount properties.
    */
-  fetchAddress(address: string): Promise<{ used: boolean; balance: number }>;
+  fetchAddress(address: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }>;
 
   /**
    * Get the balance of a scriptHash and find out whether the scriptHash ever
    * received some coins.
    * @async
    * @param scriptHash A Bitcoin scriptHash
-   * @returns An object with 'used' and 'balance' properties.
+   * @returns An object with 'balance' & txCount properties.
    */
-  fetchScriptHash(
-    scriptHash: string
-  ): Promise<{ used: boolean; balance: number }>;
+  fetchScriptHash(scriptHash: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }>;
 
   /**
    * Get an object where the key is the confirmation target (in number of blocks)

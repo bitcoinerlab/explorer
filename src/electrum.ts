@@ -4,7 +4,7 @@ import ElectrumClient from 'electrum-client';
 import { checkFeeEstimates } from './checkFeeEstimates';
 //API: https://electrumx.readthedocs.io/en/latest/protocol-methods.html
 
-import { networks, Network } from 'bitcoinjs-lib';
+import { networks, Network, Transaction } from 'bitcoinjs-lib';
 import {
   ELECTRUM_BLOCKSTREAM_HOST,
   ELECTRUM_BLOCKSTREAM_PORT,
@@ -16,7 +16,7 @@ import {
   ELECTRUM_LOCAL_REGTEST_PORT,
   ELECTRUM_LOCAL_REGTEST_PROTOCOL
 } from './constants';
-import type { Explorer } from './interface';
+import type { Explorer, UtxoId, Utxo } from './interface';
 import { addressToScriptHash } from './address';
 
 function defaultElectrumServer(network: Network = networks.bitcoin): {
@@ -160,9 +160,9 @@ export class ElectrumExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ txHex: string; vout: number }[]> {
+  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined> {
     this.#assertConnect();
-    const utxos: { txHex: string; vout: number }[] = [];
+    let utxos: { [utxoId: UtxoId]: Utxo } | undefined;
     this.#assertConnect();
     if (!scriptHash && address)
       scriptHash = addressToScriptHash(address, this.#network);
@@ -176,7 +176,11 @@ export class ElectrumExplorer implements Explorer {
         const txHex = await this.#client!.blockchainTransaction_get(
           unspent.tx_hash
         );
-        utxos.push({ txHex, vout: unspent.tx_pos });
+        const vout = unspent.tx_pos;
+        const txId = Transaction.fromHex(txHex).getId();
+        const utxoId = txId + ':' + vout;
+        if (!utxos) utxos = { [utxoId]: { utxoId, txHex, vout } };
+        else utxos[utxoId] = { utxoId, txHex, vout };
       }
     }
     return utxos;
@@ -185,9 +189,12 @@ export class ElectrumExplorer implements Explorer {
   /**
    * Implements {@link Explorer#fetchAddress}.
    * */
-  async fetchAddress(
-    address: string
-  ): Promise<{ balance: number; used: boolean }> {
+  async fetchAddress(address: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }> {
     const scriptHash = addressToScriptHash(address, this.#network);
     return this.fetchScriptHash(scriptHash);
   }
@@ -195,27 +202,28 @@ export class ElectrumExplorer implements Explorer {
   /**
    * Implements {@link Explorer#fetchScriptHash}.
    * */
-  async fetchScriptHash(
-    scriptHash: string
-  ): Promise<{ balance: number; used: boolean }> {
-    this.#assertConnect();
-    let used = false;
+  async fetchScriptHash(scriptHash: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }> {
     this.#assertConnect();
     const balance = await this.#client!.blockchainScripthash_getBalance(
       scriptHash
     );
-    if (balance.confirmed === 0) {
-      this.#assertConnect();
-      const history = await this.#client!.blockchainScripthash_getHistory(
-        scriptHash
-      );
-      if (history.length) {
-        used = true;
-      }
-    } else {
-      used = true;
-    }
-    return { balance: balance.confirmed, used };
+    this.#assertConnect();
+    const history = await this.#client!.blockchainScripthash_getHistory(
+      scriptHash
+    );
+    const _txCount = history.filter(tx => tx.height > 0).length;
+
+    return {
+      balance: balance.confirmed,
+      txCount: _txCount,
+      unconfirmedBalance: balance.unconfirmed,
+      unconfirmedTxCount: history.length - _txCount
+    };
   }
 
   /**

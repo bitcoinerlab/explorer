@@ -2,7 +2,8 @@ import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
-import type { Explorer } from './interface';
+import type { Explorer, UtxoId, Utxo } from './interface';
+import { Transaction } from 'bitcoinjs-lib';
 
 import { RequestQueue } from './requestQueue';
 const requestQueue = new RequestQueue();
@@ -109,8 +110,8 @@ export class EsploraExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ txHex: string; vout: number }[]> {
-    const utxos = [];
+  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined> {
+    let utxos: { [utxoId: UtxoId]: Utxo } | undefined;
 
     const fetchedUtxos = (await esploraFetchJson(
       `${this.#url}/${address ? 'address' : 'scripthash'}/${
@@ -125,8 +126,14 @@ export class EsploraExplorer implements Explorer {
 
     for (const utxo of fetchedUtxos) {
       if (utxo.status.confirmed === true) {
-        const tx = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
-        utxos.push({ txHex: tx, vout: utxo.vout });
+        const txHex = await esploraFetchText(
+          `${this.#url}/tx/${utxo.txid}/hex`
+        );
+        const txId = Transaction.fromHex(txHex).getId();
+        const vout = utxo.vout;
+        const utxoId = txId + ':' + vout;
+        if (!utxos) utxos = { [utxoId]: { utxoId, txHex, vout } };
+        else utxos[utxoId] = { utxoId, txHex, vout };
       }
     }
     return utxos;
@@ -138,43 +145,77 @@ export class EsploraExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ used: boolean; balance: number }> {
+  }): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }> {
     if (!address && !scriptHash) {
       throw new Error('Either address or scriptHash must be provided.');
     }
 
     const path = address ? `address/${address}` : `scripthash/${scriptHash}`;
-    const chain_stats = (
-      (await esploraFetchJson(`${this.#url}/${path}`)) as {
-        chain_stats: {
-          tx_count: number;
-          funded_txo_sum: number;
-          spent_txo_sum: number;
-        };
+
+    type StatType = {
+      tx_count: number;
+      funded_txo_sum: number;
+      spent_txo_sum: number;
+    };
+    type Stats = { [chainType: string]: StatType };
+    const stats: Stats = {};
+
+    for (const chainType of ['chain_stats', 'mempool_stats']) {
+      const fetchedData = (
+        (await esploraFetchJson(`${this.#url}/${path}`)) as {
+          [key: string]: StatType;
+        }
+      )[chainType];
+
+      if (fetchedData) {
+        stats[chainType] = fetchedData;
+      } else {
+        throw new Error(
+          `Could not get stats for ${chainType} and ${address || scriptHash}`
+        );
       }
-    )['chain_stats'];
+    }
+    if (!stats['chain_stats']) throw new Error('Chain stats are defined');
+    if (!stats['mempool_stats']) throw new Error('Mempool stats not defined');
 
     return {
-      used: chain_stats['tx_count'] !== 0,
-      balance: chain_stats['funded_txo_sum'] - chain_stats['spent_txo_sum']
+      balance:
+        stats['chain_stats']['funded_txo_sum'] -
+        stats['chain_stats']['spent_txo_sum'],
+      txCount: stats['chain_stats']['tx_count'],
+      unconfirmedBalance:
+        stats['mempool_stats']['funded_txo_sum'] -
+        stats['mempool_stats']['spent_txo_sum'],
+      unconfirmedTxCount: stats['mempool_stats']['tx_count']
     };
   }
 
   /**
    * Implements {@link Explorer#fetchAddress}.
    */
-  async fetchAddress(
-    address: string
-  ): Promise<{ used: boolean; balance: number }> {
+  async fetchAddress(address: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }> {
     return this.fetchAddressOrScriptHash({ address });
   }
 
   /**
    * Implements {@link Explorer#fetchScriptHash}.
    */
-  async fetchScriptHash(
-    scriptHash: string
-  ): Promise<{ used: boolean; balance: number }> {
+  async fetchScriptHash(scriptHash: string): Promise<{
+    balance: number;
+    txCount: number;
+    unconfirmedBalance: number;
+    unconfirmedTxCount: number;
+  }> {
     return this.fetchAddressOrScriptHash({ scriptHash });
   }
 
