@@ -247,4 +247,14 @@ export class EsploraExplorer implements Explorer {
     checkFeeEstimates(feeEstimates as Record<string, number>);
     return feeEstimates as Record<string, number>;
   }
+
+  /**
+   * Implements {@link Explorer#fetchBlockHeight}.
+   * Get's current block height.
+   * @async
+   * @returns A number representing the current height.
+   */
+  async fetchBlockHeight(): Promise<number> {
+    return parseInt(await esploraFetchText(`${this.#url}/blocks/tip/height`));
+  }
 }

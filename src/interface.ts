@@ -95,4 +95,11 @@ export interface Explorer {
    * @returns An object where the key is the confirmation target (in number of blocks).
    */
   fetchFeeEstimates(): Promise<Record<string, number>>;
+
+  /**
+   * Get's current block height.
+   * @async
+   * @returns A number representing the current height.
+   */
+  fetchBlockHeight(): Promise<number>;
 }

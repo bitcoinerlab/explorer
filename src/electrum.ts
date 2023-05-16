@@ -46,8 +46,8 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
 }
 
 export class ElectrumExplorer implements Explorer {
+  #height!: number;
   #client!: ElectrumClient | undefined;
-  //#blockTime!: number;
 
   #host: string;
   #port: number;
@@ -116,6 +116,18 @@ export class ElectrumExplorer implements Explorer {
       client: 'bitcoinerlab',
       version: '1.4'
     });
+    this.#client.subscribe.on(
+      'blockchain.headers.subscribe',
+      (headers: { height: number }[]) => {
+        if (Array.isArray(headers)) {
+          for (const header of headers) {
+            this.#updateHeight(header);
+          }
+        }
+      }
+    );
+    const header = await this.#client.blockchainHeaders_subscribe();
+    this.#updateHeight(header);
   }
 
   /**
@@ -125,6 +137,17 @@ export class ElectrumExplorer implements Explorer {
     this.#assertConnect();
     await this.#client!.close();
     this.#client = undefined;
+  }
+
+  #updateHeight(header: { height: number }) {
+    if (
+      header &&
+      header.height &&
+      (typeof this.#height === 'undefined' || header.height > this.#height)
+    ) {
+      this.#height = header.height;
+      //this.#blockTime = Math.floor(+new Date() / 1000);
+    }
   }
 
   /**
@@ -244,5 +267,15 @@ export class ElectrumExplorer implements Explorer {
     }
     checkFeeEstimates(feeEstimates);
     return feeEstimates;
+  }
+
+  /**
+   * Implements {@link Explorer#fetchBlockHeight}.
+   * Get's current block height.
+   * @async
+   * @returns A number representing the current height.
+   */
+  async fetchBlockHeight(): Promise<number> {
+    return this.#height;
   }
 }
