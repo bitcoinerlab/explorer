@@ -16,7 +16,7 @@ import {
   ELECTRUM_LOCAL_REGTEST_PORT,
   ELECTRUM_LOCAL_REGTEST_PROTOCOL
 } from './constants';
-import type { Explorer, UtxoId, Utxo } from './interface';
+import type { Explorer, UtxoId, UtxoInfo } from './interface';
 import { addressToScriptHash } from './address';
 
 function defaultElectrumServer(network: Network = networks.bitcoin): {
@@ -47,7 +47,6 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
 
 export class ElectrumExplorer implements Explorer {
   #client!: ElectrumClient | undefined;
-  #height!: number;
   //#blockTime!: number;
 
   #host: string;
@@ -98,17 +97,6 @@ export class ElectrumExplorer implements Explorer {
     }
   }
 
-  #updateHeight(header: { height: number }) {
-    if (
-      header &&
-      header.height &&
-      (typeof this.#height === 'undefined' || header.height > this.#height)
-    ) {
-      this.#height = header.height;
-      //this.#blockTime = Math.floor(+new Date() / 1000);
-    }
-  }
-
   /**
    * Implements {@link Explorer#connect}.
    */
@@ -128,18 +116,6 @@ export class ElectrumExplorer implements Explorer {
       client: 'bitcoinerlab',
       version: '1.4'
     });
-    this.#client.subscribe.on(
-      'blockchain.headers.subscribe',
-      (headers: { height: number }[]) => {
-        if (Array.isArray(headers)) {
-          for (const header of headers) {
-            this.#updateHeight(header);
-          }
-        }
-      }
-    );
-    const header = await this.#client.blockchainHeaders_subscribe();
-    this.#updateHeight(header);
   }
 
   /**
@@ -160,30 +136,54 @@ export class ElectrumExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined> {
+  }): Promise<{
+    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
+    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
+  }> {
     this.#assertConnect();
-    let utxos: { [utxoId: UtxoId]: Utxo } | undefined;
-    this.#assertConnect();
+
     if (!scriptHash && address)
       scriptHash = addressToScriptHash(address, this.#network);
     if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
+
     const unspents = await this.#client!.blockchainScripthash_listunspent(
       scriptHash
     );
+
+    const confirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
+    const unconfirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
+
     for (const unspent of unspents) {
-      if (this.#height - unspent.height >= 5) {
-        this.#assertConnect();
-        const txHex = await this.#client!.blockchainTransaction_get(
-          unspent.tx_hash
-        );
-        const vout = unspent.tx_pos;
-        const txId = Transaction.fromHex(txHex).getId();
-        const utxoId = txId + ':' + vout;
-        if (!utxos) utxos = { [utxoId]: { utxoId, txHex, vout } };
-        else utxos[utxoId] = { utxoId, txHex, vout };
+      this.#assertConnect();
+
+      const txHex = await this.#client!.blockchainTransaction_get(
+        unspent.tx_hash
+      );
+      const vout = unspent.tx_pos;
+      const txId = Transaction.fromHex(txHex).getId();
+      const utxoId = txId + ':' + vout;
+      const blockHeight = unspent.height || 0;
+
+      if (unspent.height !== 0) {
+        confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
+      } else {
+        unconfirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
       }
     }
-    return utxos;
+
+    const result: {
+      confirmed?: { [utxoId: UtxoId]: UtxoInfo };
+      unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
+    } = {};
+
+    if (Object.keys(confirmedUtxoInfoMap).length > 0) {
+      result.confirmed = confirmedUtxoInfoMap;
+    }
+    if (Object.keys(unconfirmedUtxoInfoMap).length > 0) {
+      result.unconfirmed = unconfirmedUtxoInfoMap;
+    }
+
+    return result;
   }
 
   /**

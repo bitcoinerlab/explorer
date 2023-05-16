@@ -20,11 +20,12 @@ export type UtxoId = string;
 /**
  * Represents a UTXO (Unspent Transaction Output).
  */
-export type Utxo = {
+export type UtxoInfo = {
   utxoId: UtxoId; // The UTXO identifier, composed of the transaction ID and the
   // output index, separated by a colon (e.g., "txId:vout").
   txHex: string; // The transaction ID in hex format.
   vout: number; // The output index (an integer >= 0).
+  blockHeight: number; //0 for unconfirmed, block height number for confirmed
 };
 export interface Explorer {
   /**
@@ -52,7 +53,10 @@ export interface Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined>;
+  }): Promise<{
+    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
+    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
+  }>;
 
   /**
    * Get the balance of an address and find out whether the address ever

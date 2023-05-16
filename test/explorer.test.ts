@@ -99,9 +99,11 @@ for (const regtestExplorer of regtestExplorers) {
         unconfirmedBalance: 0,
         unconfirmedTxCount: 0
       }).toEqual(await explorer.fetchAddress(fixtures.regtest.unusedAddress));
-      expect(
-        await explorer.fetchUtxos({ address: fixtures.regtest.unusedAddress })
-      ).toEqual(undefined);
+      const utxosResult = await explorer.fetchUtxos({
+        address: fixtures.regtest.unusedAddress
+      });
+      expect(utxosResult.confirmed).toBeUndefined();
+      expect(utxosResult.unconfirmed).toBeUndefined();
       //Do the funding:
       for (const descriptor of fixtures.regtest.descriptors) {
         //First let's burn any possible remaining money out there (from
@@ -134,9 +136,9 @@ for (const regtestExplorer of regtestExplorers) {
         expect(txCount > 0).toEqual(true);
         const expectedUtxos = await regtestUtils.unspents(address);
 
-        const fetchedUtxos = await explorer.fetchUtxos({ address });
-        const utxos = fetchedUtxos
-          ? Object.values(fetchedUtxos).map(utxo => {
+        const { confirmed } = await explorer.fetchUtxos({ address });
+        const utxos = confirmed
+          ? Object.values(confirmed).map(utxo => {
               const tx = Transaction.fromHex(utxo.txHex);
               return {
                 vout: utxo.vout,

@@ -2,7 +2,7 @@ import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
-import type { Explorer, UtxoId, Utxo } from './interface';
+import type { Explorer, UtxoId, UtxoInfo } from './interface';
 import { Transaction } from 'bitcoinjs-lib';
 
 import { RequestQueue } from './requestQueue';
@@ -20,6 +20,7 @@ interface EsploraUtxo {
   vout: number;
   value: number;
   status: EsploraUtxoStatus;
+  block_height: number | null;
 
   // Optional fields for Elements-based chains
   valuecommitment?: string;
@@ -110,8 +111,12 @@ export class EsploraExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<{ [utxoId: UtxoId]: Utxo } | undefined> {
-    let utxos: { [utxoId: UtxoId]: Utxo } | undefined;
+  }): Promise<{
+    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
+    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
+  }> {
+    const confirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
+    const unconfirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
 
     const fetchedUtxos = (await esploraFetchJson(
       `${this.#url}/${address ? 'address' : 'scripthash'}/${
@@ -125,18 +130,33 @@ export class EsploraExplorer implements Explorer {
       );
 
     for (const utxo of fetchedUtxos) {
+      const txHex = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
+
+      const txId = Transaction.fromHex(txHex).getId();
+      const vout = utxo.vout;
+      const utxoId = txId + ':' + vout;
+      const blockHeight = utxo.block_height || 0;
+
       if (utxo.status.confirmed === true) {
-        const txHex = await esploraFetchText(
-          `${this.#url}/tx/${utxo.txid}/hex`
-        );
-        const txId = Transaction.fromHex(txHex).getId();
-        const vout = utxo.vout;
-        const utxoId = txId + ':' + vout;
-        if (!utxos) utxos = { [utxoId]: { utxoId, txHex, vout } };
-        else utxos[utxoId] = { utxoId, txHex, vout };
+        confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
+      } else {
+        unconfirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
       }
     }
-    return utxos;
+
+    const result: {
+      confirmed?: { [utxoId: UtxoId]: UtxoInfo };
+      unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
+    } = {};
+
+    if (Object.keys(confirmedUtxoInfoMap).length > 0) {
+      result.confirmed = confirmedUtxoInfoMap;
+    }
+    if (Object.keys(unconfirmedUtxoInfoMap).length > 0) {
+      result.unconfirmed = unconfirmedUtxoInfoMap;
+    }
+
+    return result;
   }
 
   async fetchAddressOrScriptHash({
