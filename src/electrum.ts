@@ -169,6 +169,12 @@ export class ElectrumExplorer implements Explorer {
       scriptHash = addressToScriptHash(address, this.#network);
     if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
 
+    /**  The API call below returns, per each utxo:
+     * tx_pos - the vout
+     * value
+     * tx_hash - the txid
+     * height - the blockheight
+     */
     const unspents = await this.#client!.blockchainScripthash_listunspent(
       scriptHash
     );
@@ -185,7 +191,7 @@ export class ElectrumExplorer implements Explorer {
       const vout = unspent.tx_pos;
       const txId = Transaction.fromHex(txHex).getId();
       const utxoId = txId + ':' + vout;
-      const blockHeight = unspent.height || 0;
+      const blockHeight = unspent.height;
 
       if (unspent.height !== 0) {
         confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
@@ -236,6 +242,10 @@ export class ElectrumExplorer implements Explorer {
       scriptHash
     );
     this.#assertConnect();
+    /** get_history returns:
+     * height
+     * txid
+     */
     const history = await this.#client!.blockchainScripthash_getHistory(
       scriptHash
     );
@@ -277,5 +287,51 @@ export class ElectrumExplorer implements Explorer {
    */
   async fetchBlockHeight(): Promise<number> {
     return this.#height;
+  }
+
+  /**
+   * Fetches the transaction history for a given address or script hash from an Electrum server.
+   *
+   * @param {object} params - The parameters for the method.
+   * @param {string} params.address - The address to fetch transaction history for.
+   * @param {string} params.scriptHash - The script hash to fetch transaction history for.
+   *
+   * @throws {Error} If both address and scriptHash are provided or if neither are provided.
+   *
+   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
+   * transaction history, each item is an object containing txId and blockHeight.
+   */
+  async fetchHistory({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<Array<{ txId: string; blockHeight: number }>> {
+    if (!scriptHash && address)
+      scriptHash = addressToScriptHash(address, this.#network);
+    if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
+
+    const history = await this.#client!.blockchainScripthash_getHistory(
+      scriptHash
+    );
+
+    const transactionHistory = history.map(({ tx_hash, height }) => ({
+      txId: tx_hash,
+      blockHeight: height || 0
+    }));
+
+    return transactionHistory;
+  }
+
+  /**
+   * Fetches raw transaction data for a given transaction ID from an Electrum server.
+   *
+   * @param {string} txId - The transaction ID to fetch data for.
+   *
+   * @returns {Promise<string>} A promise that resolves to the raw transaction data as a string.
+   */
+  async fetchTx(txId: string): Promise<string> {
+    return await this.#client!.blockchainTransaction_get(txId);
   }
 }

@@ -80,6 +80,7 @@ function isValidHttpUrl(string: string): boolean {
  * Implements an {@link Explorer} Interface for an Esplora server.
  */
 export class EsploraExplorer implements Explorer {
+  TXS_PER_PAGE: number = 25;
   #url: string;
 
   /**
@@ -118,6 +119,16 @@ export class EsploraExplorer implements Explorer {
     const confirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
     const unconfirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
 
+    /** The API call below returns, per each utxo:
+     * txid
+     * vout
+     * value
+     * status
+     *   confirmed (boolean)
+     *   block_height (available for confirmed transactions, null otherwise)
+     *   block_hash (available for confirmed transactions, null otherwise)
+     *   block_time (available for confirmed transactions, null otherwise)
+     */
     const fetchedUtxos = (await esploraFetchJson(
       `${this.#url}/${address ? 'address' : 'scripthash'}/${
         address || scriptHash
@@ -130,12 +141,13 @@ export class EsploraExplorer implements Explorer {
       );
 
     for (const utxo of fetchedUtxos) {
+      console.log({ utxo });
       const txHex = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
 
       const txId = Transaction.fromHex(txHex).getId();
       const vout = utxo.vout;
       const utxoId = txId + ':' + vout;
-      const blockHeight = utxo.block_height || 0;
+      const blockHeight = utxo.status.block_height || 0;
 
       if (utxo.status.confirmed === true) {
         confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
@@ -256,5 +268,82 @@ export class EsploraExplorer implements Explorer {
    */
   async fetchBlockHeight(): Promise<number> {
     return parseInt(await esploraFetchText(`${this.#url}/blocks/tip/height`));
+  }
+
+  /**
+   * Fetches the transaction history for a given address or script hash from an Esplora server.
+   *
+   * @param {object} params - The parameters for the method.
+   * @param {string} params.address - The address to fetch transaction history for.
+   * @param {string} params.scriptHash - The script hash to fetch transaction history for.
+   *
+   * @throws {Error} If both address and scriptHash are provided or if neither are provided.
+   *
+   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
+   * transaction history, each item is an object containing txId and blockHeight.
+   */
+  async fetchTxHistory({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<Array<{ txId: string; blockHeight: number }>> {
+    // Validate the input: assert that either address or scriptHash is provided,
+    // but not both.
+    if (!((address && !scriptHash) || (!address && scriptHash)))
+      throw new Error(
+        `Please provide either an address or a script hash, but not both.`
+      );
+
+    const type = address ? 'address' : 'scripthash';
+    const value = address || scriptHash;
+
+    const txHistory = [];
+
+    // First request to fetch transactions including mempool ones
+    const url = `${this.#url}/${type}/${value}/txs`;
+
+    type FetchedTxs = Array<{ txid: string; status: { block_height: number } }>;
+    let newFetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
+
+    if (newFetchedTxs.length > 0) {
+      txHistory.push(
+        ...newFetchedTxs.map(({ txid, status }) => ({
+          txId: txid,
+          blockHeight: status.block_height || 0
+        }))
+      );
+
+      // Subsequent requests to fetch more transactions from /chain endpoint
+      while (
+        newFetchedTxs.filter(tx => tx.status.block_height).length ===
+        this.TXS_PER_PAGE
+      ) {
+        const lastSeenTxid = newFetchedTxs[newFetchedTxs.length - 1]!.txid;
+        const url = `${this.#url}/${type}/${value}/txs/chain/${lastSeenTxid}`;
+        newFetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
+
+        txHistory.push(
+          ...newFetchedTxs.map(({ txid, status }) => ({
+            txId: txid,
+            blockHeight: status.block_height || 0
+          }))
+        );
+      }
+    }
+
+    return txHistory;
+  }
+
+  /**
+   * Fetches raw transaction data for a given transaction ID from an Esplora server.
+   *
+   * @param {string} txId - The transaction ID to fetch data for.
+   *
+   * @returns {Promise<string>} A promise that resolves to the raw transaction data as a string.
+   */
+  async fetchTx(txId: string): Promise<string> {
+    return esploraFetchText(`${this.#url}/tx/${txId}/hex`);
   }
 }

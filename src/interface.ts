@@ -87,6 +87,28 @@ export interface Explorer {
   }>;
 
   /**
+   * Fetches the transaction history for a given address or script hash.
+   *
+   * @param {object} params - The parameters for the method.
+   * @param {string} params.address - The address to fetch transaction history for.
+   * @param {string} params.scriptHash - The script hash to fetch transaction history for.
+   *
+   * @throws {Error} If both address and scriptHash are provided or if neither are provided.
+   *
+   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
+   * transaction history, each item is an object containing txId and blockHeight.
+   */
+  fetchTxHistory({
+    address,
+    scriptHash
+  }: {
+    address?: string;
+    scriptHash?: string;
+  }): Promise<Array<{ txId: string; blockHeight: number }>>;
+
+  fetchTx(txId: string): Promise<string>;
+
+  /**
    * Get an object where the key is the confirmation target (in number of blocks)
    * and the value is the estimated feerate (in sat/vB).
    *
