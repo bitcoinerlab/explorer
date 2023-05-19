@@ -16,7 +16,7 @@ import {
   ELECTRUM_LOCAL_REGTEST_PORT,
   ELECTRUM_LOCAL_REGTEST_PROTOCOL
 } from './constants';
-import type { Explorer, UtxoId, UtxoInfo } from './interface';
+import { Explorer, UtxoId, UtxoInfo, IRREV_CONF_THRESH } from './interface';
 import { addressToScriptHash } from './address';
 
 function defaultElectrumServer(network: Network = networks.bitcoin): {
@@ -46,7 +46,8 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
 }
 
 export class ElectrumExplorer implements Explorer {
-  #height!: number;
+  #irrevConfThresh: number;
+  #blockTipHeight!: number;
   #client!: ElectrumClient | undefined;
 
   #host: string;
@@ -58,13 +59,16 @@ export class ElectrumExplorer implements Explorer {
     host = ELECTRUM_BLOCKSTREAM_HOST,
     port = ELECTRUM_BLOCKSTREAM_PORT,
     protocol = ELECTRUM_BLOCKSTREAM_PROTOCOL,
-    network = networks.bitcoin
+    network = networks.bitcoin,
+    irrevConfThresh = IRREV_CONF_THRESH
   }: {
     host?: string;
     port?: number;
     protocol?: 'ssl' | 'tcp';
     network?: Network;
+    irrevConfThresh?: number;
   } = {}) {
+    this.#irrevConfThresh = irrevConfThresh;
     if (
       typeof host === 'undefined' &&
       typeof port === 'undefined' &&
@@ -121,13 +125,13 @@ export class ElectrumExplorer implements Explorer {
       (headers: { height: number }[]) => {
         if (Array.isArray(headers)) {
           for (const header of headers) {
-            this.#updateHeight(header);
+            this.#updateBlockTipHeight(header);
           }
         }
       }
     );
     const header = await this.#client.blockchainHeaders_subscribe();
-    this.#updateHeight(header);
+    this.#updateBlockTipHeight(header);
   }
 
   /**
@@ -139,13 +143,14 @@ export class ElectrumExplorer implements Explorer {
     this.#client = undefined;
   }
 
-  #updateHeight(header: { height: number }) {
+  #updateBlockTipHeight(header: { height: number }) {
     if (
       header &&
       header.height &&
-      (typeof this.#height === 'undefined' || header.height > this.#height)
+      (typeof this.#blockTipHeight === 'undefined' ||
+        header.height > this.#blockTipHeight)
     ) {
-      this.#height = header.height;
+      this.#blockTipHeight = header.height;
       //this.#blockTime = Math.floor(+new Date() / 1000);
     }
   }
@@ -286,28 +291,22 @@ export class ElectrumExplorer implements Explorer {
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
-    return this.#height;
+    return this.#blockTipHeight;
   }
 
   /**
-   * Fetches the transaction history for a given address or script hash from an Electrum server.
-   *
-   * @param {object} params - The parameters for the method.
-   * @param {string} params.address - The address to fetch transaction history for.
-   * @param {string} params.scriptHash - The script hash to fetch transaction history for.
-   *
-   * @throws {Error} If both address and scriptHash are provided or if neither are provided.
-   *
-   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
-   * transaction history, each item is an object containing txId and blockHeight.
+   * Fetches the transaction history for a given address or script hash from an Esplora server.
+   * See interface.ts
    */
-  async fetchHistory({
+  async fetchTxHistory({
     address,
     scriptHash
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<Array<{ txId: string; blockHeight: number }>> {
+  }): Promise<
+    Array<{ txId: string; blockHeight: number; irreversible: boolean }>
+  > {
     if (!scriptHash && address)
       scriptHash = addressToScriptHash(address, this.#network);
     if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
@@ -316,10 +315,21 @@ export class ElectrumExplorer implements Explorer {
       scriptHash
     );
 
-    const transactionHistory = history.map(({ tx_hash, height }) => ({
-      txId: tx_hash,
-      blockHeight: height || 0
-    }));
+    const transactionHistory = history.map(({ tx_hash, height }) => {
+      const txId = tx_hash;
+      const blockHeight: number = height || 0;
+      if (blockHeight > this.#blockTipHeight) {
+        console.warn(
+          `tx ${tx_hash} block height ${blockHeight} larger than the tip ${
+            this.#blockTipHeight
+          }`
+        );
+        this.#blockTipHeight = blockHeight;
+      }
+      const numConfirmations = this.#blockTipHeight - blockHeight + 1;
+      const irreversible = numConfirmations >= this.#irrevConfThresh;
+      return { txId, blockHeight, irreversible };
+    });
 
     return transactionHistory;
   }

@@ -2,7 +2,7 @@ import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
-import type { Explorer, UtxoId, UtxoInfo } from './interface';
+import { Explorer, UtxoId, UtxoInfo, IRREV_CONF_THRESH } from './interface';
 import { Transaction } from 'bitcoinjs-lib';
 
 import { RequestQueue } from './requestQueue';
@@ -80,20 +80,28 @@ function isValidHttpUrl(string: string): boolean {
  * Implements an {@link Explorer} Interface for an Esplora server.
  */
 export class EsploraExplorer implements Explorer {
-  TXS_PER_PAGE: number = 25;
+  #irrevConfThresh: number;
+  #BLOCK_HEIGHT_CACHE_TIME: number = 60; //cache for 60 seconds at most
+  #TXS_PER_PAGE: number = 25;
+  #cachedBlockTipHeight: number = 0;
+  #blockTipHeightCacheTime: number = 0;
   #url: string;
 
   /**
    * @param {object} params
    * @param {string} params.url Esplora's API url. Defaults to blockstream.info if `service = ESPLORA`.
    */
-  constructor({ url }: { url?: string } = { url: ESPLORA_BLOCKSTREAM_URL }) {
+  constructor({
+    url = ESPLORA_BLOCKSTREAM_URL,
+    irrevConfThresh = IRREV_CONF_THRESH
+  }: { url?: string; irrevConfThresh?: number } = {}) {
     if (typeof url !== 'string' || !isValidHttpUrl(url)) {
       throw new Error(
         'Specify a valid URL for Esplora and nothing else. Note that the url can include the port: http://api.example.com:8080/api'
       );
     }
     this.#url = url;
+    this.#irrevConfThresh = irrevConfThresh;
   }
 
   async connect() {
@@ -270,17 +278,27 @@ export class EsploraExplorer implements Explorer {
     return parseInt(await esploraFetchText(`${this.#url}/blocks/tip/height`));
   }
 
+  /** Returns the height of the last block.
+   * It does not fetch it of it, unless either:
+   *    fetched before more than #BLOCK_HEIGHT_CACHE_TIME ago
+   *    the #cachedBlockTipHeight is behind the blockHeight passed as a param
+   */
+
+  async #getBlockHeight(blockHeight?: number): Promise<number> {
+    const now: number = +new Date() / 1000;
+    if (
+      now - this.#blockTipHeightCacheTime > this.#BLOCK_HEIGHT_CACHE_TIME ||
+      (blockHeight && blockHeight > this.#blockTipHeightCacheTime)
+    ) {
+      this.#cachedBlockTipHeight = await this.fetchBlockHeight();
+      this.#blockTipHeightCacheTime = Math.floor(+new Date() / 1000);
+    }
+    return this.#cachedBlockTipHeight;
+  }
+
   /**
    * Fetches the transaction history for a given address or script hash from an Esplora server.
-   *
-   * @param {object} params - The parameters for the method.
-   * @param {string} params.address - The address to fetch transaction history for.
-   * @param {string} params.scriptHash - The script hash to fetch transaction history for.
-   *
-   * @throws {Error} If both address and scriptHash are provided or if neither are provided.
-   *
-   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
-   * transaction history, each item is an object containing txId and blockHeight.
+   * See interface.ts
    */
   async fetchTxHistory({
     address,
@@ -288,7 +306,9 @@ export class EsploraExplorer implements Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<Array<{ txId: string; blockHeight: number }>> {
+  }): Promise<
+    Array<{ txId: string; blockHeight: number; irreversible: boolean }>
+  > {
     // Validate the input: assert that either address or scriptHash is provided,
     // but not both.
     if (!((address && !scriptHash) || (!address && scriptHash)))
@@ -301,39 +321,36 @@ export class EsploraExplorer implements Explorer {
 
     const txHistory = [];
 
-    // First request to fetch transactions including mempool ones
-    const url = `${this.#url}/${type}/${value}/txs`;
-
     type FetchedTxs = Array<{ txid: string; status: { block_height: number } }>;
-    let newFetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
 
-    if (newFetchedTxs.length > 0) {
-      txHistory.push(
-        ...newFetchedTxs.map(({ txid, status }) => ({
-          txId: txid,
-          blockHeight: status.block_height || 0
-        }))
-      );
+    let fetchedTxs: FetchedTxs;
+    let lastSeenTxid: string | undefined;
 
-      // Subsequent requests to fetch more transactions from /chain endpoint
-      while (
-        newFetchedTxs.filter(tx => tx.status.block_height).length ===
-        this.TXS_PER_PAGE
-      ) {
-        const lastSeenTxid = newFetchedTxs[newFetchedTxs.length - 1]!.txid;
-        const url = `${this.#url}/${type}/${value}/txs/chain/${lastSeenTxid}`;
-        newFetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
-
-        txHistory.push(
-          ...newFetchedTxs.map(({ txid, status }) => ({
-            txId: txid,
-            blockHeight: status.block_height || 0
-          }))
-        );
+    do {
+      // First request to fetch transactions including mempool ones
+      const url = `${this.#url}/${type}/${value}/txs${
+        lastSeenTxid ? `/chain/${lastSeenTxid}` : ''
+      }`;
+      fetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
+      const lastTx = fetchedTxs[fetchedTxs.length - 1];
+      if (lastTx) {
+        lastSeenTxid = lastTx.txid;
+        for (const fetchedTx of fetchedTxs) {
+          const txId = fetchedTx.txid;
+          const status = fetchedTx.status;
+          const blockHeight = status.block_height || 0;
+          const blockTipHeight = await this.#getBlockHeight(blockHeight);
+          const numConfirmations = blockTipHeight - blockHeight + 1;
+          const irreversible = numConfirmations >= this.#irrevConfThresh;
+          txHistory.push({ txId, blockHeight, irreversible });
+        }
       }
-    }
+    } while (
+      fetchedTxs.filter(tx => tx.status.block_height).length ===
+      this.#TXS_PER_PAGE
+    );
 
-    return txHistory;
+    return txHistory.reverse();
   }
 
   /**

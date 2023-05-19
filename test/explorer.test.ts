@@ -1,3 +1,6 @@
+TODO: Test the case for invalid address /script hash
+TODO: Test the case for addresses with txs very large.
+TODO: Test the case for txs too verbose (based on BLueWallet this can generate errors)
 import { fixtures, ELECTRUM, ESPLORA } from './fixtures/explorer';
 
 import {

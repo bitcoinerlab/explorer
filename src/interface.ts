@@ -11,7 +11,7 @@
  * and
  * https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes
  */
-
+export const IRREV_CONF_THRESH = 3;
 /**
  * Represents a UTXO identifier, a combination of the transaction ID and output number.
  */
@@ -95,8 +95,11 @@ export interface Explorer {
    *
    * @throws {Error} If both address and scriptHash are provided or if neither are provided.
    *
-   * @returns {Promise<Array<{ txId: string; blockHeight: number }>>} A promise that resolves to an array containing
-   * transaction history, each item is an object containing txId and blockHeight.
+   * @returns {Promise<Array<{ txId: string; blockHeight: number; irreversible: boolean }>>} A promise that resolves to an array containing
+   * transaction history, each item is an object containing txId, blockHeight and irreversible.
+   * `txId` is the transaction ID, `blockHeight` is the height of the block that includes the transaction,
+   * and `irreversible` is a boolean indicating whether the transaction has reached the irreversible confirmation threshold (typically 6 confirmations in Bitcoin but we defaulted to 3).
+   *
    */
   fetchTxHistory({
     address,
@@ -104,7 +107,9 @@ export interface Explorer {
   }: {
     address?: string;
     scriptHash?: string;
-  }): Promise<Array<{ txId: string; blockHeight: number }>>;
+  }): Promise<
+    Array<{ txId: string; blockHeight: number; irreversible: boolean }>
+  >;
 
   fetchTx(txId: string): Promise<string>;
 
