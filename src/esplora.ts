@@ -2,7 +2,13 @@ import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 
-import { Explorer, UtxoId, UtxoInfo, IRREV_CONF_THRESH } from './interface';
+import {
+  Explorer,
+  UtxoId,
+  UtxoInfo,
+  IRREV_CONF_THRESH,
+  MAX_TX_PER_SCRIPTPUBKEY
+} from './interface';
 import { Transaction } from 'bitcoinjs-lib';
 
 import { RequestQueue } from './requestQueue';
@@ -86,6 +92,7 @@ export class EsploraExplorer implements Explorer {
   #cachedBlockTipHeight: number = 0;
   #blockTipHeightCacheTime: number = 0;
   #url: string;
+  #maxTxPerScriptPubKey: number;
 
   /**
    * @param {object} params
@@ -93,8 +100,13 @@ export class EsploraExplorer implements Explorer {
    */
   constructor({
     url = ESPLORA_BLOCKSTREAM_URL,
-    irrevConfThresh = IRREV_CONF_THRESH
-  }: { url?: string; irrevConfThresh?: number } = {}) {
+    irrevConfThresh = IRREV_CONF_THRESH,
+    maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY
+  }: {
+    url?: string;
+    irrevConfThresh?: number;
+    maxTxPerScriptPubKey?: number;
+  } = {}) {
     if (typeof url !== 'string' || !isValidHttpUrl(url)) {
       throw new Error(
         'Specify a valid URL for Esplora and nothing else. Note that the url can include the port: http://api.example.com:8080/api'
@@ -102,6 +114,7 @@ export class EsploraExplorer implements Explorer {
     }
     this.#url = url;
     this.#irrevConfThresh = irrevConfThresh;
+    this.#maxTxPerScriptPubKey = maxTxPerScriptPubKey;
   }
 
   async connect() {
@@ -149,7 +162,6 @@ export class EsploraExplorer implements Explorer {
       );
 
     for (const utxo of fetchedUtxos) {
-      console.log({ utxo });
       const txHex = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
 
       const txId = Transaction.fromHex(txHex).getId();
@@ -343,6 +355,8 @@ export class EsploraExplorer implements Explorer {
           const numConfirmations = blockTipHeight - blockHeight + 1;
           const irreversible = numConfirmations >= this.#irrevConfThresh;
           txHistory.push({ txId, blockHeight, irreversible });
+          if (txHistory.length > this.#maxTxPerScriptPubKey)
+            throw new Error(`Too many transactions per address`);
         }
       }
     } while (

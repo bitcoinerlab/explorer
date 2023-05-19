@@ -22,6 +22,11 @@ declare module 'electrum-client' {
     blockchainHeaders_subscribe(): Promise<any>;
 
     close(): Promise<void>;
+    server_ping(): Promise<null>;
+
+    onError: (e: Error) => void;
+    onClose: (hadError: boolean) => void;
+    onData: (data: Buffer | string) => void;
 
     blockchainScripthash_listunspent(scriptHash: string): Promise<any[]>;
 

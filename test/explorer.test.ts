@@ -1,6 +1,8 @@
-TODO: Test the case for invalid address /script hash
-TODO: Test the case for addresses with txs very large.
-TODO: Test the case for txs too verbose (based on BLueWallet this can generate errors)
+//Note on these tests: These are not unit tests but integration tests.
+//They will call real servers to make sure the APIs did not change.
+//TODO: Test the case for invalid address /script hash
+//TODO: Test the case for addresses with too many txs.
+//TODO: Test that results between electrum and esplora are consistent on abandon
 import { fixtures, ELECTRUM, ESPLORA } from './fixtures/explorer';
 
 import {
@@ -185,12 +187,13 @@ for (const regtestExplorer of regtestExplorers) {
 }
 
 describe('Explorer: Tests with public servers', () => {
-  const explorers: Explorer[] = [];
   for (const server of fixtures.bitcoin.servers as Server[]) {
+    let explorer: Explorer;
+    const explorerName =
+      server.service + ' on ' + (server.host || 'default host');
     test(`Create and connect to ${server.service} on ${
       server.service === ELECTRUM ? server.host : server.url
     }`, async () => {
-      let explorer: Explorer;
       if (server.service === ELECTRUM) {
         try {
           explorer = new ElectrumExplorer(server);
@@ -205,11 +208,20 @@ describe('Explorer: Tests with public servers', () => {
         }
       } else throw new Error('Please, pass a correct service');
       await expect(explorer.connect()).resolves.not.toThrow();
-      explorers.push(explorer);
-    }, 10000);
-  }
-  test('fetchFeeEstimates', async () => {
-    for (const explorer of explorers) {
+    });
+    //As of May 19th, 2023, 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 has > 90K txs
+    test(`address 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 with large number of txs using ${explorerName}`, async () => {
+      //const val = await explorer.fetchTxHistory({
+      //  address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
+      //});
+      //console.log({ val });
+      await expect(
+        explorer.fetchTxHistory({
+          address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
+        })
+      ).rejects.toThrow();
+    }, 60000);
+    test(`fetchFeeEstimates using ${explorerName}`, async () => {
       const feeEstimates = await explorer.fetchFeeEstimates();
       const T = [
         ...Array.from({ length: 25 }, (_, i) => i + 1),
@@ -229,12 +241,14 @@ describe('Explorer: Tests with public servers', () => {
           );
         prevIndex = index;
       }
-    }
-  }, 30000);
-  test('close', async () => {
-    for (const explorer of explorers) {
+    }, 30000);
+    test(`close ${explorerName}`, async () => {
       await explorer.close();
-    }
-    await new Promise(r => setTimeout(r, 9000)); //give some time so that keepalive timeouts are closed after explorer.close
+      //await new Promise(r => setTimeout(r, 9000));
+    }, 10000);
+  }
+  //give some time so that keepalive timeouts are closed after explorer.close
+  afterAll(async () => {
+    await new Promise(r => setTimeout(r, 9000));
   }, 10000);
 });

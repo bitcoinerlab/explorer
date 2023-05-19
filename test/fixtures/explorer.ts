@@ -82,6 +82,9 @@ export const fixtures = {
       {
         //will default to blockstream electrum
         service: ELECTRUM
+      },
+      {
+        service: ESPLORA
       }
     ]
   }
