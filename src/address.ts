@@ -16,3 +16,14 @@ export function addressToScriptHash(address: string, network: Network): string {
     );
   }
 }
+
+//Esplora's http scriptHash is different than Electrum's. Electrum's is reversed
+//https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes
+//https://github.com/Blockstream/esplora/issues/460
+export function reverseScriptHash(
+  scriptHash: string | undefined
+): string | undefined {
+  if (scriptHash)
+    return Buffer.from(scriptHash, 'hex').reverse().toString('hex');
+  else return;
+}

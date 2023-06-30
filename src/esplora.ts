@@ -1,6 +1,7 @@
 import { checkFeeEstimates } from './checkFeeEstimates';
 
 import { ESPLORA_BLOCKSTREAM_URL } from './constants';
+import { reverseScriptHash } from './address';
 
 import {
   Explorer,
@@ -152,7 +153,7 @@ export class EsploraExplorer implements Explorer {
      */
     const fetchedUtxos = (await esploraFetchJson(
       `${this.#url}/${address ? 'address' : 'scripthash'}/${
-        address || scriptHash
+        address || reverseScriptHash(scriptHash)
       }/utxo`
     )) as EsploraUtxosResponse;
 
@@ -207,7 +208,9 @@ export class EsploraExplorer implements Explorer {
       throw new Error('Either address or scriptHash must be provided.');
     }
 
-    const path = address ? `address/${address}` : `scripthash/${scriptHash}`;
+    const path = address
+      ? `address/${address}`
+      : `scripthash/${reverseScriptHash(scriptHash)}`;
 
     type StatType = {
       tx_count: number;
@@ -329,7 +332,7 @@ export class EsploraExplorer implements Explorer {
       );
 
     const type = address ? 'address' : 'scripthash';
-    const value = address || scriptHash;
+    const value = address || reverseScriptHash(scriptHash);
 
     const txHistory = [];
 
@@ -338,30 +341,39 @@ export class EsploraExplorer implements Explorer {
     let fetchedTxs: FetchedTxs;
     let lastSeenTxid: string | undefined;
 
+    let numQueries = 0;
     do {
-      // First request to fetch transactions including mempool ones
-      const url = `${this.#url}/${type}/${value}/txs${
-        lastSeenTxid ? `/chain/${lastSeenTxid}` : ''
-      }`;
+      // First request to fetch transactions
+      const url =
+        numQueries === 0
+          ? `${this.#url}/${type}/${value}/txs/mempool`
+          : `${this.#url}/${type}/${value}/txs${
+              lastSeenTxid ? `/chain/${lastSeenTxid}` : ''
+            }`;
       fetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
-      const lastTx = fetchedTxs[fetchedTxs.length - 1];
-      if (lastTx) {
-        lastSeenTxid = lastTx.txid;
+      const lastSeenTx = fetchedTxs[fetchedTxs.length - 1];
+      if (lastSeenTx) {
+        if (numQueries !== 0) lastSeenTxid = lastSeenTx.txid;
         for (const fetchedTx of fetchedTxs) {
           const txId = fetchedTx.txid;
           const status = fetchedTx.status;
           const blockHeight = status.block_height || 0;
           const blockTipHeight = await this.#getBlockHeight(blockHeight);
-          const numConfirmations = blockTipHeight - blockHeight + 1;
-          const irreversible = numConfirmations >= this.#irrevConfThresh;
+          const numConfirmations =
+            blockHeight === 0 ? 0 : blockTipHeight - blockHeight + 1;
+          const irreversible =
+            blockHeight !== 0 && numConfirmations >= this.#irrevConfThresh;
+
           txHistory.push({ txId, blockHeight, irreversible });
           if (txHistory.length > this.#maxTxPerScriptPubKey)
             throw new Error(`Too many transactions per address`);
         }
       }
+      numQueries++;
     } while (
+      numQueries === 1 ||
       fetchedTxs.filter(tx => tx.status.block_height).length ===
-      this.#TXS_PER_PAGE
+        this.#TXS_PER_PAGE
     );
 
     return txHistory.reverse();

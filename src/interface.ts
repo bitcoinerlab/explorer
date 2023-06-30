@@ -14,7 +14,8 @@
 
 //The irreversible number of confirmations threshold.
 export const IRREV_CONF_THRESH = 3;
-//max number of txs per address supported. With esplora this can be larger. Most Electrum servers will stop at around 1000 anyway.
+//max number of txs per address supported. With esplora this can be larger.
+//Most Electrum servers will stop at around 1000 anyway.
 export const MAX_TX_PER_SCRIPTPUBKEY = 1000;
 
 /**
@@ -104,6 +105,8 @@ export interface Explorer {
    * transaction history, each item is an object containing txId, blockHeight and irreversible.
    * `txId` is the transaction ID, `blockHeight` is the height of the block that includes the transaction,
    * and `irreversible` is a boolean indicating whether the transaction has reached the irreversible confirmation threshold (set to IRREV_CONF_THRESH confirmations).
+   * They are returned in blockchain order. However, esplora might not respect
+   * order when txs belong to the same block. See https://github.com/Blockstream/esplora/issues/165
    *
    */
   fetchTxHistory({
