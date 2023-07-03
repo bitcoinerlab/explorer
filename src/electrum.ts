@@ -64,9 +64,9 @@ export class ElectrumExplorer implements Explorer {
   #network: Network;
 
   constructor({
-    host = ELECTRUM_BLOCKSTREAM_HOST,
-    port = ELECTRUM_BLOCKSTREAM_PORT,
-    protocol = ELECTRUM_BLOCKSTREAM_PROTOCOL,
+    host,
+    port,
+    protocol,
     network = networks.bitcoin,
     irrevConfThresh = IRREV_CONF_THRESH,
     maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY
@@ -93,6 +93,7 @@ export class ElectrumExplorer implements Explorer {
     if (
       typeof host !== 'string' ||
       !Number.isInteger(port) ||
+      port === undefined ||
       port <= 0 ||
       (protocol !== 'ssl' && protocol !== 'tcp')
     ) {
