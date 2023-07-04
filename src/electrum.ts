@@ -137,7 +137,7 @@ export class ElectrumExplorer implements Explorer {
       });
       this.#client.subscribe.on(
         'blockchain.headers.subscribe',
-        (headers: { height: number }[]) => {
+        (headers: Array<{ height: number }>) => {
           if (Array.isArray(headers)) {
             for (const header of headers) {
               this.#updateBlockTipHeight(header);
@@ -362,6 +362,10 @@ export class ElectrumExplorer implements Explorer {
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
+    if (this.#blockTipHeight === undefined)
+      throw new Error(
+        `Error: block tip height has not been retrieved yet. Probably not connected`
+      );
     return this.#blockTipHeight;
   }
 
