@@ -220,7 +220,7 @@ describe('Explorer: Tests with public servers', () => {
           address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
         })
       ).rejects.toThrow();
-    }, 60000);
+    }, 120000);
     test(`fetchFeeEstimates using ${explorerName}`, async () => {
       const feeEstimates = await explorer.fetchFeeEstimates();
       const T = [
