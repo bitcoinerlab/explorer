@@ -89,7 +89,6 @@ function isValidHttpUrl(string: string): boolean {
 export class EsploraExplorer implements Explorer {
   #irrevConfThresh: number;
   #BLOCK_HEIGHT_CACHE_TIME: number = 60; //cache for 60 seconds at most
-  #TXS_PER_PAGE: number = 25;
   #cachedBlockTipHeight: number = 0;
   #blockTipHeightCacheTime: number = 0;
   #url: string;
@@ -339,21 +338,18 @@ export class EsploraExplorer implements Explorer {
     type FetchedTxs = Array<{ txid: string; status: { block_height: number } }>;
 
     let fetchedTxs: FetchedTxs;
-    let lastSeenTxid: string | undefined;
+    let lastTxid: string | undefined;
 
-    let numQueries = 0;
     do {
       // First request to fetch transactions
-      const url =
-        numQueries === 0
-          ? `${this.#url}/${type}/${value}/txs/mempool`
-          : `${this.#url}/${type}/${value}/txs${
-              lastSeenTxid ? `/chain/${lastSeenTxid}` : ''
-            }`;
+      const url = `${this.#url}/${type}/${value}/txs${
+        lastTxid ? `/chain/${lastTxid}` : ''
+      }`;
       fetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
-      const lastSeenTx = fetchedTxs[fetchedTxs.length - 1];
-      if (lastSeenTx) {
-        if (numQueries !== 0) lastSeenTxid = lastSeenTx.txid;
+      const lastTx = fetchedTxs[fetchedTxs.length - 1];
+      lastTxid = undefined;
+      if (lastTx) {
+        if (lastTx.status.block_height !== 0) lastTxid = lastTx.txid;
         for (const fetchedTx of fetchedTxs) {
           const txId = fetchedTx.txid;
           const status = fetchedTx.status;
@@ -369,12 +365,7 @@ export class EsploraExplorer implements Explorer {
             throw new Error(`Too many transactions per address`);
         }
       }
-      numQueries++;
-    } while (
-      numQueries === 1 ||
-      fetchedTxs.filter(tx => tx.status.block_height).length ===
-        this.#TXS_PER_PAGE
-    );
+    } while (lastTxid);
 
     return txHistory.reverse();
   }
