@@ -409,7 +409,9 @@ export class ElectrumExplorer implements Explorer {
         );
         this.#blockTipHeight = blockHeight;
       }
-      const numConfirmations = this.#blockTipHeight - blockHeight + 1;
+      const numConfirmations = blockHeight
+        ? this.#blockTipHeight - blockHeight + 1
+        : 0;
       const irreversible = numConfirmations >= this.#irrevConfThresh;
       return { txId, blockHeight, irreversible };
     });
