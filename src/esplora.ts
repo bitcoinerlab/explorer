@@ -88,7 +88,7 @@ function isValidHttpUrl(string: string): boolean {
  */
 export class EsploraExplorer implements Explorer {
   #irrevConfThresh: number;
-  #BLOCK_HEIGHT_CACHE_TIME: number = 60; //cache for 60 seconds at most
+  #BLOCK_HEIGHT_CACHE_TIME: number = 3; //cache for 3 seconds at most
   #cachedBlockTipHeight: number = 0;
   #blockTipHeightCacheTime: number = 0;
   #url: string;
@@ -289,7 +289,12 @@ export class EsploraExplorer implements Explorer {
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
-    return parseInt(await esploraFetchText(`${this.#url}/blocks/tip/height`));
+    const blockTipHeight = parseInt(
+      await esploraFetchText(`${this.#url}/blocks/tip/height`)
+    );
+    this.#cachedBlockTipHeight = blockTipHeight;
+    this.#blockTipHeightCacheTime = Math.floor(+new Date() / 1000);
+    return blockTipHeight;
   }
 
   /** Returns the height of the last block.
@@ -303,10 +308,8 @@ export class EsploraExplorer implements Explorer {
     if (
       now - this.#blockTipHeightCacheTime > this.#BLOCK_HEIGHT_CACHE_TIME ||
       (blockHeight && blockHeight > this.#blockTipHeightCacheTime)
-    ) {
-      this.#cachedBlockTipHeight = await this.fetchBlockHeight();
-      this.#blockTipHeightCacheTime = Math.floor(+new Date() / 1000);
-    }
+    )
+      await this.fetchBlockHeight();
     return this.#cachedBlockTipHeight;
   }
 
