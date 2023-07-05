@@ -362,6 +362,9 @@ export class ElectrumExplorer implements Explorer {
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
+    //Get's the client even if we don't need to use it. We call this so that it
+    //throws if it's not connected (and this.#blockTipHeight is erroneous)
+    await this.#getClient();
     if (this.#blockTipHeight === undefined)
       throw new Error(
         `Error: block tip height has not been retrieved yet. Probably not connected`
