@@ -57,7 +57,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "bitcoinjs-lib": "^6.1.0",
+    "bitcoinjs-lib": "^6.1.3",
     "electrum-client": "github:BlueWallet/rn-electrum-client#76c0ea35e1a50c47f3a7f818d529ebd100161496",
     "net": "^1.0.2",
     "tls": "^0.0.1"
