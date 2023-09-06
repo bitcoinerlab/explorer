@@ -75,6 +75,7 @@ async () => {
   //...
 };
 ```
+Note that the `EsploraExplorer` and `ElectrumExplorer` classes accept optional parameters `irrevConfThresh` and `maxTxPerScriptPubKey`, which correspond to the number of confirmations required to consider a transaction as irreversible (defaults to 3) and the maximum number of transactions per address that are allowed (defaults to 1000). You can set a larger `maxTxPerScriptPubKey` if you expect to be working with addresses that have been highly reused, at the cost of having worse performance. Note that many Electrum servers will already return at most 1000 transactions per script hash anyway, so consider using an Esplora server or an Electrum server that supports a large number of transactions if this is of your interest.
 
 ## Authors and Contributors
 
