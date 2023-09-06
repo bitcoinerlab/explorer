@@ -1,6 +1,6 @@
 # Explorer
 
-`@bitcoinerlab/explorer` is a library that provides a common interface for interacting with various blockchain explorer services like Esplora and Electrum. The library aims to standardize the way developers access the functionality provided by these services and enable easy integration with the @bitcoinerlab ecosystem.
+`@bitcoinerlab/explorer` is a library that provides a common interface for interacting with various blockchain explorer services like Esplora and Electrum. The library aims to standardize the way developers access the functionality provided by these services and enable easy integration with the `@bitcoinerlab` ecosystem.
 
 ## Features
 
