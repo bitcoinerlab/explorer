@@ -18,21 +18,6 @@ export const IRREV_CONF_THRESH = 3;
 //Most Electrum servers will stop at around 1000 anyway.
 export const MAX_TX_PER_SCRIPTPUBKEY = 1000;
 
-/**
- * Represents a UTXO identifier, a combination of the transaction ID and output number.
- */
-export type UtxoId = string;
-
-/**
- * Represents a UTXO (Unspent Transaction Output).
- */
-export type UtxoInfo = {
-  utxoId: UtxoId; // The UTXO identifier, composed of the transaction ID and the
-  // output index, separated by a colon (e.g., "txId:vout").
-  txHex: string; // The transaction ID in hex format.
-  vout: number; // The output index (an integer >= 0).
-  blockHeight: number; //0 for unconfirmed, block height number for confirmed
-};
 export interface Explorer {
   /**
    * Connect to the server.
@@ -45,24 +30,6 @@ export interface Explorer {
    * @async
    */
   close(): Promise<void>;
-
-  /**
-   * Get the utxos of an address.
-   * @async
-   * @param address A Bitcoin address
-   * @returns An array of utxos objects like this: `[{ txHex, vout },...]`,
-   * where `txHex` is a string in hex format and `vout` is an integer >= 0.
-   */
-  fetchUtxos({
-    address,
-    scriptHash
-  }: {
-    address?: string;
-    scriptHash?: string;
-  }): Promise<{
-    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
-    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
-  }>;
 
   /**
    * Get the balance of an address and find out whether the address ever
@@ -137,4 +104,13 @@ export interface Explorer {
    * @returns A number representing the current height.
    */
   fetchBlockHeight(): Promise<number>;
+
+  /**
+   * Push a raw Bitcoin transaction to the network.
+   * @async
+   * @param txHex A raw Bitcoin transaction in hexadecimal string format.
+   * @returns The transaction ID (`txId`) if the transaction was broadcasted successfully.
+   * @throws {Error} If the transaction is invalid or fails to be broadcasted.
+   */
+  push(txHex: string): Promise<string>;
 }

@@ -18,7 +18,7 @@ export class RequestQueue {
    */
   constructor(
     delayBetweenRequests: number = 100,
-    maxRetries: number = 10,
+    maxRetries: number = 100,
     increasePercent: number = 10
   ) {
     this.delayBetweenRequests = delayBetweenRequests;
@@ -54,9 +54,9 @@ export class RequestQueue {
             if (response.status === 429) {
               this.delayBetweenRequests *= 1 + this.increasePercent / 100;
               this.retries++;
-              console.warn(
-                `Received 429 status. Increasing delay to ${this.delayBetweenRequests} ms and retrying. Retry count: ${this.retries}`
-              );
+              //console.warn(
+              //  `Received 429 status. Increasing delay to ${this.delayBetweenRequests} ms and retrying. Retry count: ${this.retries}`
+              //);
               await new Promise(resolve =>
                 setTimeout(resolve, this.delayBetweenRequests)
               ); // Wait for the updated delayBetweenRequests

@@ -4,7 +4,7 @@ import ElectrumClient from 'electrum-client';
 import { checkFeeEstimates } from './checkFeeEstimates';
 //API: https://electrumx.readthedocs.io/en/latest/protocol-methods.html
 
-import { networks, Network, Transaction } from 'bitcoinjs-lib';
+import { networks, Network } from 'bitcoinjs-lib';
 import {
   ELECTRUM_BLOCKSTREAM_HOST,
   ELECTRUM_BLOCKSTREAM_PORT,
@@ -18,12 +18,30 @@ import {
 } from './constants';
 import {
   Explorer,
-  UtxoId,
-  UtxoInfo,
   IRREV_CONF_THRESH,
   MAX_TX_PER_SCRIPTPUBKEY
 } from './interface';
 import { addressToScriptHash } from './address';
+
+// global.net && global.tls will be set in the entry points of any react-native
+// project:
+//   global.net = { Socket };
+//   global.tls = { connect };
+// where Socket and connect are these:
+// https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/net.js
+// https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/tls.js
+// If they are set, then use them
+
+declare global {
+  // eslint-disable-next-line no-var
+  var net: typeof import('net');
+  // eslint-disable-next-line no-var
+  var tls: typeof import('tls');
+}
+const netModule =
+  typeof global !== 'undefined' && global.net ? global.net : net;
+const tlsModule =
+  typeof global !== 'undefined' && global.tls ? global.tls : tls;
 
 function defaultElectrumServer(network: Network = networks.bitcoin): {
   host: string;
@@ -115,8 +133,8 @@ export class ElectrumExplorer implements Explorer {
       throw new Error('Client already connected.');
     }
     this.#client = new ElectrumClient(
-      net,
-      this.#protocol === 'ssl' ? tls : false,
+      netModule,
+      this.#protocol === 'ssl' ? tlsModule : false,
       this.#port,
       this.#host,
       this.#protocol
@@ -208,79 +226,8 @@ export class ElectrumExplorer implements Explorer {
     }
   }
 
-  /**
-   * Implements {@link Explorer#fetchUtxos}.
-   */
-  async fetchUtxos({
-    address,
-    scriptHash
-  }: {
-    address?: string;
-    scriptHash?: string;
-  }): Promise<{
-    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
-    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
-  }> {
-    if (!scriptHash && address)
-      scriptHash = addressToScriptHash(address, this.#network);
-    if (!scriptHash) throw new Error(`Please provide an address or scriptHash`);
-
-    /**  The API call below returns, per each utxo:
-     * tx_pos - the vout
-     * value
-     * tx_hash - the txid
-     * height - the blockheight
-     */
-    let unspents;
-    try {
-      const client = await this.#getClient();
-      unspents = await client.blockchainScripthash_listunspent(scriptHash);
-    } catch (_error: unknown) {
-      const error = _error as Error;
-      throw new Error(
-        `Failed fetching utxos for ${scriptHash || address}: ${error.message}`
-      );
-    }
-
-    const confirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
-    const unconfirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
-
-    for (const unspent of unspents) {
-      let txHex;
-      try {
-        const client = await this.#getClient();
-        txHex = await client.blockchainTransaction_get(unspent.tx_hash);
-      } catch (_error: unknown) {
-        const error = _error as Error;
-        throw new Error(
-          `Failed fetching tx for ${unspent.tx_hash}: ${error.message}`
-        );
-      }
-      const vout = unspent.tx_pos;
-      const txId = Transaction.fromHex(txHex).getId();
-      const utxoId = txId + ':' + vout;
-      const blockHeight = unspent.height;
-
-      if (unspent.height !== 0) {
-        confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
-      } else {
-        unconfirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
-      }
-    }
-
-    const result: {
-      confirmed?: { [utxoId: UtxoId]: UtxoInfo };
-      unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
-    } = {};
-
-    if (Object.keys(confirmedUtxoInfoMap).length > 0) {
-      result.confirmed = confirmedUtxoInfoMap;
-    }
-    if (Object.keys(unconfirmedUtxoInfoMap).length > 0) {
-      result.unconfirmed = unconfirmedUtxoInfoMap;
-    }
-
-    return result;
+  async getBlockHeight() {
+    return this.#blockTipHeight;
   }
 
   /**
@@ -442,6 +389,31 @@ export class ElectrumExplorer implements Explorer {
       throw new Error(
         `Failed to fetch transaction tx for "${txId}": ${error.message}`
       );
+    }
+  }
+
+  /**
+   * Push a raw Bitcoin transaction to the network.
+   * @async
+   * @param txHex A raw Bitcoin transaction in hexadecimal string format.
+   * @returns The transaction ID (`txId`) if the transaction was broadcasted successfully.
+   * @throws {Error} If the transaction is invalid or fails to be broadcasted.
+   */
+  async push(txHex: string): Promise<string> {
+    try {
+      const client = await this.#getClient();
+      const txId = await client.blockchainTransaction_broadcast(txHex);
+
+      if (!txId) {
+        throw new Error(
+          'Failed to get a transaction ID from the Electrum server.'
+        );
+      }
+
+      return txId;
+    } catch (_error: unknown) {
+      const error = _error as Error;
+      throw new Error(`Failed to broadcast transaction: ${error.message}`);
     }
   }
 }

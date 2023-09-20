@@ -14,7 +14,7 @@ import {
   ELECTRUM_LOCAL_REGTEST_PROTOCOL,
   ESPLORA_LOCAL_REGTEST_URL
 } from '../dist';
-import { Transaction, Psbt, networks, Network } from 'bitcoinjs-lib';
+import { Psbt, networks, Network } from 'bitcoinjs-lib';
 import type { BIP32Interface } from 'bip32';
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
 import * as descriptors from '@bitcoinerlab/descriptors';
@@ -29,13 +29,14 @@ interface Server {
   url?: string;
 }
 
-function utxoArrayToSet(
-  utxos: Array<{ txId: string; value: number; vout: number }>
-): Set<string> {
-  return new Set(
-    utxos.map(({ txId, value, vout }) => `${txId}-${value}-${vout}`)
-  );
-}
+//DEPRECATED
+//function utxoArrayToSet(
+//  utxos: Array<{ txId: string; value: number; vout: number }>
+//): Set<string> {
+//  return new Set(
+//    utxos.map(({ txId, value, vout }) => `${txId}-${value}-${vout}`)
+//  );
+//}
 
 async function burnTx({
   expression,
@@ -97,18 +98,19 @@ for (const regtestExplorer of regtestExplorers) {
       await expect(explorer.connect()).resolves.not.toThrow();
     });
 
-    test('fetchAddress & fetchUtxos', async () => {
+    test('fetchAddress', async () => {
       expect({
         balance: 0,
         txCount: 0,
         unconfirmedBalance: 0,
         unconfirmedTxCount: 0
       }).toEqual(await explorer.fetchAddress(fixtures.regtest.unusedAddress));
-      const utxosResult = await explorer.fetchUtxos({
-        address: fixtures.regtest.unusedAddress
-      });
-      expect(utxosResult.confirmed).toBeUndefined();
-      expect(utxosResult.unconfirmed).toBeUndefined();
+      // DEPRECATED
+      // const utxosResult = await explorer.fetchUtxos({
+      //   address: fixtures.regtest.unusedAddress
+      // });
+      // expect(utxosResult.confirmed).toBeUndefined();
+      // expect(utxosResult.unconfirmed).toBeUndefined();
       //Do the funding:
       for (const descriptor of fixtures.regtest.descriptors) {
         //First let's burn any possible remaining money out there (from
@@ -139,20 +141,21 @@ for (const regtestExplorer of regtestExplorers) {
         const { balance, txCount } = await explorer.fetchAddress(address);
         expect(balance).toBeGreaterThanOrEqual(descriptor.value);
         expect(txCount > 0).toEqual(true);
-        const expectedUtxos = await regtestUtils.unspents(address);
+        //DEPRECATED
+        //const expectedUtxos = await regtestUtils.unspents(address);
 
-        const { confirmed } = await explorer.fetchUtxos({ address });
-        const utxos = confirmed
-          ? Object.values(confirmed).map(utxo => {
-              const tx = Transaction.fromHex(utxo.txHex);
-              return {
-                vout: utxo.vout,
-                txId: tx.getId(),
-                value: tx.outs[utxo.vout]!.value
-              };
-            })
-          : [];
-        expect(utxoArrayToSet(utxos)).toEqual(utxoArrayToSet(expectedUtxos));
+        //const { confirmed } = await explorer.fetchUtxos({ address });
+        //const utxos = confirmed
+        //  ? Object.values(confirmed).map(utxo => {
+        //      const tx = Transaction.fromHex(utxo.txHex);
+        //      return {
+        //        vout: utxo.vout,
+        //        txId: tx.getId(),
+        //        value: tx.outs[utxo.vout]!.value
+        //      };
+        //    })
+        //  : [];
+        //expect(utxoArrayToSet(utxos)).toEqual(utxoArrayToSet(expectedUtxos));
       }
       //Now burn all the money
       for (const descriptor of fixtures.regtest.descriptors) {

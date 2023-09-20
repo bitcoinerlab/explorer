@@ -6,7 +6,6 @@
 
 - A consistent interface for interacting with different explorer services
 - Connect and disconnect methods to manage connections to the services
-- Fetch UTXOs of a Bitcoin address
 - Fetch balance and usage information of a Bitcoin address
 - Fetch fee estimates based on confirmation targets
 
@@ -16,17 +15,77 @@
 npm install @bitcoinerlab/explorer
 ```
 
+### Installation in React-Native
+
+Depending on the specific client you wish to use (`Electrum` or `Esplora`), there are different considerations to keep in mind.
+
+#### Using the Electrum Client
+
+1. **Install Required Modules**:
+   ```bash
+   npm install @bitcoinerlab/explorer react-native-tcp-socket
+   ```
+
+2. **Eject from Expo (if in use)**:
+   ```bash
+   npx expo prebuild
+   cd ios && pod install && cd ..
+   ```
+
+3. **Set Up Global Variables**:
+   Create an `electrumSupport.js` file that you must import at the entry point of your application (before any other imports). This file should contain the following code:
+
+   ```javascript
+   global.net = { Socket };
+   global.tls = { connect };
+   ```
+
+   For the definitions of `Socket` and `connect`, refer to:
+   - [Socket Definition](https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/net.js)
+   - [Connect Definition](https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/tls.js)
+
+#### Using the Esplora Client
+
+If you're integrating the Esplora client within a React Native environment, you might encounter the error `"URL.protocol is not implemented"`. This arises because React Native doesn't have a full implementation of the browser's `URL` class.
+
+To address this:
+
+1. **Install the URL Polyfill**:
+
+   ```bash
+   npm install @bitcoinerlab/explorer react-native-url-polyfill
+   ```
+
+2. **Integrate the Polyfill**:
+   
+   At the top of your entry file (e.g., `index.js` or `App.js`), include:
+
+   ```javascript
+   import 'react-native-url-polyfill/auto';
+   ```
+
+   This polyfill will provide the missing `URL` functionalities in React Native, ensuring the Esplora client operates without issues.
+
 ## Usage
 
 This library provides a unified interface for interacting with Bitcoin Blockchain explorers. Currently, it supports two popular explorers: Esplora and Electrum.
 
 The following methods are shared in all implementations:
 
-- `connect()`: Connect to the server.
-- `close()`: Close the connection.
-- `fetchUtxos(address: string)`: Get the UTXOs of a Bitcoin address. Returns an array of UTXO objects with the following format: `[{ txHex: string, vout: number },...]`.
-- `fetchAddress(address: string)`: Get the balance and usage information of a Bitcoin address. Returns an object with `used` and `balance` properties. The `used` property is a boolean indicating whether the address has ever received any coins, even if the balance is currently zero. The `balance` property represents the current balance of the address in satoshis.
-- `fetchFeeEstimates()`: Get fee estimates based on confirmation targets. Returns an object with keys representing confirmation targets and values representing the estimated feerate (in sat/vB).
+- `connect()`: Establish a connection to the server.
+- `close()`: Terminate the connection.
+- `fetchAddress(address: string)`: Retrieve the balance and usage details of a Bitcoin address. This returns an object with:
+  - `used`: A boolean that denotes if the address has received any coins in the past, even if its current balance is zero.
+  - `balance`: The present balance of the address, measured in satoshis.
+- `fetchScriptHash(scriptHash: string)`: Acts similar to `fetchAddress` but for a [script hash](https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes).
+- `fetchTxHistory({ address?: string; scriptHash?: string; })`: Acquires the transaction history for a specific address or script hash. The function returns a promise that resolves to an array of transaction histories. Each entry is an object that contains:
+  - `txId: string`
+  - `blockHeight: number`
+  - `irreversible: boolean` 
+  Note: They're typically returned in blockchain order. But there's a known [issue with Esplora](https://github.com/Blockstream/esplora/issues/165) where transactions from the same block might not maintain this order.
+- `fetchFeeEstimates()`: Obtain fee predictions based on confirmation targets. It returns an object where keys are confirmation targets and values are the projected feerate (measured in sat/vB).
+- `fetchBlockHeight()`: Determine the current block tip height.
+- `push(txHex: string)`: Submit a transaction in hex format.
 
 ### Examples
 
@@ -77,6 +136,17 @@ async () => {
 ```
 Note that the `EsploraExplorer` and `ElectrumExplorer` classes accept optional parameters `irrevConfThresh` and `maxTxPerScriptPubKey`, which correspond to the number of confirmations required to consider a transaction as irreversible (defaults to 3) and the maximum number of transactions per address that are allowed (defaults to 1000). You can set a larger `maxTxPerScriptPubKey` if you expect to be working with addresses that have been highly reused, at the cost of having worse performance. Note that many Electrum servers will already return at most 1000 transactions per script hash anyway, so consider using an Esplora server or an Electrum server that supports a large number of transactions if this is of your interest.
 
+## API Documentation
+
+To generate the API documentation for this module, you can run the following command:
+
+```bash
+npm run docs
+```
+
+However, if you'd prefer to skip this step, the API documentation has already been compiled and is available for reference at [bitcoinerlab.com/modules/explorer/api](https://bitcoinerlab.com/modules/explorer/api).
+
+
 ## Authors and Contributors
 
 The project was initially developed and is currently maintained by [Jose-Luis Landabaso](https://github.com/landabaso). Contributions and help from other developers are welcome.
@@ -109,20 +179,19 @@ This will build the project and generate the necessary files in the `dist` direc
 
 ### Testing
 
-Before committing any code, ensure it passes all tests. First, you need a Bitcoin regtest node running and [this Express-based bitcoind manager](https://github.com/bitcoinjs/regtest-server) running on 127.0.0.1:8080. Additionally, you will need an Electrum server and an Esplora server indexing the regtest node.
+Before finalizing and committing your code, it's essential to make sure all tests are successful. To run these tests:
 
-The easiest way to set up these services is by using a Docker image that comes preconfigured with them. Use the following commands to download and run the Docker image:
+1. A Bitcoin regtest node must be active.
+2. Utilize the [Express-based bitcoind manager](https://github.com/bitcoinjs/regtest-server) which should be operational at `127.0.0.1:8080`.
+3. An Electrum server and an Esplora server are required, both indexing the regtest node.
 
-```bash
-docker pull bitcoinerlab/tester
-docker run -d -p 8080:8080 -p 60401:60401 -p 3002:3002 bitcoinerlab/tester
-```
-
-These commands will start a container running a Bitcoin regtest node, the bitcoind manager, and the Blockstream Electrs and Esplora servers on your machine. Once your node, manager, and servers are set up, run the tests with the following command:
+To streamline this setup, you can use the Docker image, `bitcoinerlab/tester`, which comes preconfigured with the required services. The Docker image can be found under **Dockerfile for bitcoinerlab/tester**. When you run the test script using:
 
 ```bash
-npm run test
+npm test
 ```
+
+it will automatically download and start the Docker image if it's not already present on your machine. However, ensure you have the `docker` binary available in your path for this to work seamlessly.
 
 ### License
 

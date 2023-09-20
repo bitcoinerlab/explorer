@@ -37,5 +37,7 @@ declare module 'electrum-client' {
     blockchainScripthash_getHistory(scriptHash: string): Promise<any[]>;
 
     blockchainEstimatefee(target: number): Promise<number>;
+
+    blockchainTransaction_broadcast(txHex: string): Promise<string>;
   }
 }

@@ -5,41 +5,12 @@ import { reverseScriptHash } from './address';
 
 import {
   Explorer,
-  UtxoId,
-  UtxoInfo,
   IRREV_CONF_THRESH,
   MAX_TX_PER_SCRIPTPUBKEY
 } from './interface';
-import { Transaction } from 'bitcoinjs-lib';
 
 import { RequestQueue } from './requestQueue';
 const requestQueue = new RequestQueue();
-
-interface EsploraUtxoStatus {
-  confirmed: boolean;
-  block_height: number | null;
-  block_hash: string | null;
-  block_time: number | null;
-}
-
-interface EsploraUtxo {
-  txid: string;
-  vout: number;
-  value: number;
-  status: EsploraUtxoStatus;
-  block_height: number | null;
-
-  // Optional fields for Elements-based chains
-  valuecommitment?: string;
-  asset?: string;
-  assetcommitment?: string;
-  nonce?: string;
-  noncecommitment?: string;
-  surjection_proof?: string;
-  range_proof?: string;
-}
-
-type EsploraUtxosResponse = EsploraUtxo[];
 
 async function esploraFetch(
   ...args: Parameters<typeof fetch>
@@ -122,73 +93,6 @@ export class EsploraExplorer implements Explorer {
   }
   async close() {
     return;
-  }
-
-  /**
-   * Implements {@link Explorer#fetchUtxos}.
-   */
-  async fetchUtxos({
-    address,
-    scriptHash
-  }: {
-    address?: string;
-    scriptHash?: string;
-  }): Promise<{
-    confirmed?: { [utxoId: UtxoId]: UtxoInfo };
-    unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
-  }> {
-    const confirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
-    const unconfirmedUtxoInfoMap: { [utxoId: UtxoId]: UtxoInfo } = {};
-
-    /** The API call below returns, per each utxo:
-     * txid
-     * vout
-     * value
-     * status
-     *   confirmed (boolean)
-     *   block_height (available for confirmed transactions, null otherwise)
-     *   block_hash (available for confirmed transactions, null otherwise)
-     *   block_time (available for confirmed transactions, null otherwise)
-     */
-    const fetchedUtxos = (await esploraFetchJson(
-      `${this.#url}/${address ? 'address' : 'scripthash'}/${
-        address || reverseScriptHash(scriptHash)
-      }/utxo`
-    )) as EsploraUtxosResponse;
-
-    if (!Array.isArray(fetchedUtxos))
-      throw new Error(
-        'Invalid response from Esplora server while querying UTXOs.'
-      );
-
-    for (const utxo of fetchedUtxos) {
-      const txHex = await esploraFetchText(`${this.#url}/tx/${utxo.txid}/hex`);
-
-      const txId = Transaction.fromHex(txHex).getId();
-      const vout = utxo.vout;
-      const utxoId = txId + ':' + vout;
-      const blockHeight = utxo.status.block_height || 0;
-
-      if (utxo.status.confirmed === true) {
-        confirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
-      } else {
-        unconfirmedUtxoInfoMap[utxoId] = { utxoId, txHex, vout, blockHeight };
-      }
-    }
-
-    const result: {
-      confirmed?: { [utxoId: UtxoId]: UtxoInfo };
-      unconfirmed?: { [utxoId: UtxoId]: UtxoInfo };
-    } = {};
-
-    if (Object.keys(confirmedUtxoInfoMap).length > 0) {
-      result.confirmed = confirmedUtxoInfoMap;
-    }
-    if (Object.keys(unconfirmedUtxoInfoMap).length > 0) {
-      result.unconfirmed = unconfirmedUtxoInfoMap;
-    }
-
-    return result;
   }
 
   async fetchAddressOrScriptHash({
@@ -298,7 +202,7 @@ export class EsploraExplorer implements Explorer {
   }
 
   /** Returns the height of the last block.
-   * It does not fetch it of it, unless either:
+   * It does not fetch it, unless either:
    *    fetched before more than #BLOCK_HEIGHT_CACHE_TIME ago
    *    the #cachedBlockTipHeight is behind the blockHeight passed as a param
    */
@@ -382,5 +286,30 @@ export class EsploraExplorer implements Explorer {
    */
   async fetchTx(txId: string): Promise<string> {
     return esploraFetchText(`${this.#url}/tx/${txId}/hex`);
+  }
+
+  /**
+   * Push a raw Bitcoin transaction to the network.
+   * @async
+   * @param txHex A raw Bitcoin transaction in hexadecimal string format.
+   * @returns The transaction ID (`txId`) if the transaction was broadcasted successfully.
+   * @throws {Error} If the transaction is invalid or fails to be broadcasted.
+   */
+  async push(txHex: string): Promise<string> {
+    const response = await esploraFetch(`${this.#url}/tx`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain'
+      },
+      body: txHex
+    });
+
+    // Check if the response is successful
+    const result = await response.text();
+    if (!/^[a-fA-F0-9]{64}$/.test(result)) {
+      throw new Error(`Failed to broadcast transaction: ${result}`);
+    }
+
+    return result;
   }
 }
