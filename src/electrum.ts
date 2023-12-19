@@ -179,7 +179,6 @@ export class ElectrumExplorer implements Explorer {
       }
       try {
         await this.#client.server_ping();
-        console.log('Electrum ping');
       } catch (_error: unknown) {
         const error = _error as Error;
         // Ping failed, stop pinging and reconnect
@@ -357,9 +356,7 @@ export class ElectrumExplorer implements Explorer {
       const blockHeight: number = height || 0;
       if (blockHeight > this.#blockTipHeight) {
         console.warn(
-          `tx ${tx_hash} block height ${blockHeight} larger than the tip ${
-            this.#blockTipHeight
-          }`
+          `tx ${tx_hash} block height ${blockHeight} larger than the tip ${this.#blockTipHeight}`
         );
         this.#blockTipHeight = blockHeight;
       }
