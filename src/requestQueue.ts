@@ -1,101 +1,129 @@
-//https://github.com/Blockstream/esplora/issues/449#issuecomment-1546000515
+const log = (_message: unknown) => {};
+//const log = (_message: unknown) => console.log(_message);
+
 /**
- * Class to handle rate-limited requests
+ * Manages rate-limited fetch requests with automated throttling control. This
+ * class is designed to handle situations where rapid or concurrent fetch
+ * requests might exceed a server's rate limits or encounter network errors,
+ * resulting in HTTP 429 responses (Too Many Requests) or other fetch failures.
+ *
+ * The `RequestQueue` class provides a mechanism to control the rate of fetch
+ * requests. It automatically throttles requests when necessary and unthrottles
+ * after a set number of successful responses or a period of inactivity.
+ *
+ * Constructor params:
+ * @param maxRetries - Maximum number of retries for a fetch request upon
+ * encountering a 429 status or general network errors. Default is 100.
+ * @param unthrottleAfterCount - Number of consecutive successful fetches after
+ * which the queue will automatically stop throttling. Default is 10.
+ * @param unthrottleAfterTime - Time in milliseconds of inactivity after the
+ * last fetch, upon which the queue will automatically stop throttling.
+ * Default is 2000ms (2 seconds).
+ * @param throttleTime - Time in milliseconds to wait before retrying a fetch
+ * request when throttling is active. Default is 200ms.
+ * @param maxConcurrentTasks - Maximum number of concurrent fetch tasks allowed.
+ * When this limit is reached, new fetch tasks will wait `throttleTime` before
+ * trying again. Default is 30.
+ *
+ * Usage:
+ * ```
+ * const queue = new RequestQueue();
+ * queue.fetch('https://example.com/api/data');
+ * ```
+ * See:
+ * https://github.com/Blockstream/esplora/issues/449#issuecomment-1546000515
  */
+
 export class RequestQueue {
-  private queue: (() => Promise<void>)[] = [];
-  private delayBetweenRequests: number;
-  private originalDelay: number;
-  private lastRequestTime: number = 0;
-  private retries: number = 0;
+  private mustThrottle: boolean;
   private maxRetries: number;
-  private increasePercent: number;
-
-  /**
-   * @param delayBetweenRequests Initial delay between requests in milliseconds
-   * @param maxRetries Maximum number of retries when status 429 is encountered
-   * @param increasePercent Increase percentage for delay between requests when status 429 is encountered
-   */
+  private consecutiveOkResponses: number;
+  private unthrottleAfterCount: number;
+  private unthrottleAfterTime: number;
+  private throttleTime: number;
+  private unthrottleTimeout: ReturnType<typeof setTimeout> | undefined;
+  private concurrentTasks: number;
+  private maxConcurrentTasks: number;
   constructor(
-    delayBetweenRequests: number = 100,
     maxRetries: number = 100,
-    increasePercent: number = 10
+    /** number of consecutive ok fetches that will automatically unthrottle
+     * the system */
+    unthrottleAfterCount: number = 10,
+    /** inactivity time after last fetch that will automatically unthrottle
+     * the system */
+    unthrottleAfterTime: number = 2000, // 2 second: number = 200, 2 seconds after last fetch, deactivate sleeping for each call
+    throttleTime: number = 200,
+    /** max number of fetch tasks that are allowed to be running concurrently.
+     * When reaching maxConcurrentTasks, then sleep throttleTime and try
+     * again
+     */
+    maxConcurrentTasks: number = 30 // 50% over the typical gapLimit
   ) {
-    this.delayBetweenRequests = delayBetweenRequests;
-    this.originalDelay = delayBetweenRequests;
     this.maxRetries = maxRetries;
-    this.increasePercent = increasePercent;
+    this.unthrottleAfterCount = unthrottleAfterCount;
+    this.unthrottleAfterTime = unthrottleAfterTime;
+    this.throttleTime = throttleTime;
+    this.maxConcurrentTasks = maxConcurrentTasks;
+    this.concurrentTasks = 0;
+    this.unthrottleTimeout = undefined;
+    this.mustThrottle = false;
+    this.consecutiveOkResponses = 0;
   }
 
-  /**
-   * Sends a fetch request with rate limiting and retrying for status 429
-   * @param args Arguments to be passed to fetch function
-   * @returns Response from the fetch request
-   */
   async fetch(...args: Parameters<typeof fetch>): Promise<Response> {
-    return new Promise((resolve, reject) => {
-      const fetchTask = async () => {
-        const now = Date.now();
-        const timeSinceLastRequest = now - this.lastRequestTime;
-        if (timeSinceLastRequest < this.delayBetweenRequests) {
-          await new Promise(resolve =>
-            setTimeout(
-              resolve,
-              this.delayBetweenRequests - timeSinceLastRequest
-            )
-          );
+    const task = async () => {
+      log(`New task started, concurrentTasks: ${this.concurrentTasks}`);
+      let retries = 0;
+
+      while (retries <= this.maxRetries) {
+        log(`New fetch trial ${retries}`);
+        //sleep
+        if (this.mustThrottle) {
+          log(`Throttled - sleeping ${this.throttleTime}`);
+          await new Promise(r => setTimeout(r, this.throttleTime));
         }
-
-        while (this.retries < this.maxRetries) {
-          try {
-            const response = await fetch(...args);
-            this.lastRequestTime = Date.now();
-
-            if (response.status === 429) {
-              this.delayBetweenRequests *= 1 + this.increasePercent / 100;
-              this.retries++;
-              //console.warn(
-              //  `Received 429 status. Increasing delay to ${this.delayBetweenRequests} ms and retrying. Retry count: ${this.retries}`
-              //);
-              await new Promise(resolve =>
-                setTimeout(resolve, this.delayBetweenRequests)
-              ); // Wait for the updated delayBetweenRequests
-            } else {
-              // If status is not 429, reset retries and delay
-              this.retries = 0;
-              this.delayBetweenRequests = this.originalDelay;
-              resolve(response);
-              break;
-            }
-          } catch (error) {
-            reject(error);
-            break;
-          }
-        }
-
-        if (this.retries >= this.maxRetries) {
-          // If retries is equal to or more than maxRetries, reject the promise
-          reject(new Error('Maximum retries exceeded.'));
-        }
-      };
-      this.queue.push(fetchTask);
-      this.processQueue();
-    });
-  }
-
-  /**
-   * Process the queued fetch tasks
-   */
-  private async processQueue() {
-    if (this.queue.length > 0) {
-      const fetchTask = this.queue.shift();
-      if (fetchTask) {
         try {
-          await fetchTask();
+          log(`Real fetch`);
+          const response = await fetch(...args);
+          if (this.unthrottleTimeout) clearTimeout(this.unthrottleTimeout);
+          this.unthrottleTimeout = setTimeout(() => {
+            log(`UN-throttling after time ${this.unthrottleAfterTime}`);
+            this.mustThrottle = false;
+            this.unthrottleTimeout = undefined;
+          }, this.unthrottleAfterTime);
+
+          if (response.status === 429 && retries < this.maxRetries) {
+            this.mustThrottle = true;
+            this.consecutiveOkResponses = 0;
+            log(`429, on trial ${retries} - Throttling`);
+            retries++;
+            continue; // Retry with increased delay
+          }
+
+          this.consecutiveOkResponses++;
+          if (this.consecutiveOkResponses > this.unthrottleAfterCount) {
+            this.mustThrottle = false;
+            log(`UN-throttling`);
+          }
+          this.concurrentTasks--;
+          return response; // Resolve on successful response or max retries reached
         } catch (error) {
-          console.error('Error processing fetch task:', error);
+          log(`unknowon Error`);
+          this.mustThrottle = true;
+          this.consecutiveOkResponses = 0;
+          retries++;
         }
       }
+      this.concurrentTasks--;
+      throw new Error('Maximum retries exceeded');
+    };
+
+    while (this.concurrentTasks >= this.maxConcurrentTasks) {
+      // wait before processing this task because there are too many queries already
+      log(`Not launching yet because ${this.concurrentTasks}`);
+      await new Promise(r => setTimeout(r, this.throttleTime));
     }
+    this.concurrentTasks++;
+    return task(); // Execute the task and return its promise
   }
 }
