@@ -212,18 +212,20 @@ describe('Explorer: Tests with public servers', () => {
       } else throw new Error('Please, pass a correct service');
       await expect(explorer.connect()).resolves.not.toThrow();
     });
-    //As of May 19th, 2023, 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 has > 90K txs
-    test(`address 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 with large number of txs using ${explorerName}`, async () => {
-      //const val = await explorer.fetchTxHistory({
-      //  address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
-      //});
-      //console.log({ val });
-      await expect(
-        explorer.fetchTxHistory({
-          address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
-        })
-      ).rejects.toThrow();
-    }, 120000);
+    ////As of May 19th, 2023, 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 has > 90K txs
+    ////electrum (depending on the server): history too large / server busy - request timed out
+    ////esplora will: Too many transactions per address
+    //test(`address 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 with large number of txs using ${explorerName}`, async () => {
+    //  const val = await explorer.fetchTxHistory({
+    //    address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
+    //  });
+    //  console.log({ val });
+    //  //await expect(
+    //  //  explorer.fetchTxHistory({
+    //  //    address: '19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6'
+    //  //  })
+    //  //).rejects.toThrow();
+    //}, 120000);
     test(`fetchFeeEstimates using ${explorerName}`, async () => {
       const feeEstimates = await explorer.fetchFeeEstimates();
       const T = [
