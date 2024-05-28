@@ -92,10 +92,14 @@ export class RequestQueue {
             this.unthrottleTimeout = undefined;
           }, this.unthrottleAfterTime);
 
-          if (response.status === 429 && retries < this.maxRetries) {
+          //if (response.status === 429 && retries < this.maxRetries) {
+          if (
+            (response.status === 429 || response.status === 500) &&
+            retries < this.maxRetries
+          ) {
             this.mustThrottle = true;
             this.consecutiveOkResponses = 0;
-            log(`429, on trial ${retries} - Throttling`);
+            log(`${response.status}, on trial ${retries} - Throttling`);
             retries++;
             continue; // Retry with increased delay
           }
