@@ -53,11 +53,18 @@ async function burnTx({
   const descs = [];
   const descriptor = new Descriptor({ expression, network });
   const address = descriptor.getAddress();
-  const unspents = await regtestUtils.unspents(address);
+
+  //const unspents = await regtestUtils.unspents(address); broken. See: https://github.com/bitcoinjs/regtest-server/issues/23
+
+  const response = await fetch(
+    `${ESPLORA_LOCAL_REGTEST_URL}/address/${address}/utxo`
+  );
+  const unspents = await response.json();
+
   let value = 0;
   if (unspents.length === 0) return null;
   for (const unspent of unspents) {
-    const tx = await regtestUtils.fetch(unspent.txId);
+    const tx = await regtestUtils.fetch(unspent.txid);
     descriptor.updatePsbt({ psbt, vout: unspent.vout, txHex: tx.txHex });
     descs.push(descriptor);
     value += unspent.value;
@@ -141,7 +148,7 @@ for (const regtestExplorer of regtestExplorers) {
         const { balance, txCount } = await explorer.fetchAddress(address);
         expect(balance).toBeGreaterThanOrEqual(descriptor.value);
         expect(txCount > 0).toEqual(true);
-        //DEPRECATED
+        //DEPRECATED --- unspents is broken anyway, see: https://github.com/bitcoinjs/regtest-server/issues/23
         //const expectedUtxos = await regtestUtils.unspents(address);
 
         //const { confirmed } = await explorer.fetchUtxos({ address });
