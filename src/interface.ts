@@ -99,7 +99,17 @@ export interface Explorer {
   fetchFeeEstimates(): Promise<Record<string, number>>;
 
   /**
-   * Get's current block height.
+   * Get's the `BlockStatus: { blockHeight: number; blockHash: string; blockTime: number; }`)
+   * of a certain `blockHeight`.
+   *
+   * Returns `undefined` if this block height has not been mined yet.
+   * @async
+   * @returns `BlockStatus | undefined`;
+   */
+  fetchBlockStatus(blockHeight: number): Promise<BlockStatus | undefined>;
+
+  /**
+   * Get's current block height (blockchain tip).
    * @async
    * @returns A number representing the current height.
    */
@@ -114,3 +124,10 @@ export interface Explorer {
    */
   push(txHex: string): Promise<string>;
 }
+
+export type BlockStatus = {
+  blockHeight: number;
+  blockHash: string;
+  blockTime: number;
+  irreversible: boolean;
+};

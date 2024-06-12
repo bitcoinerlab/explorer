@@ -14,13 +14,14 @@ import {
   ELECTRUM_LOCAL_REGTEST_PROTOCOL,
   ESPLORA_LOCAL_REGTEST_URL
 } from '../dist';
-import { Psbt, networks, Network } from 'bitcoinjs-lib';
+import { Psbt, networks, Network, Block } from 'bitcoinjs-lib';
 import type { BIP32Interface } from 'bip32';
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
 import * as descriptors from '@bitcoinerlab/descriptors';
 import { mnemonicToSeedSync } from 'bip39';
 const { Descriptor, BIP32 } = descriptors.DescriptorsFactory(secp256k1);
 import { RegtestUtils } from 'regtest-client';
+const API_URL = 'http://127.0.0.1:8080/1';
 const regtestUtils = new RegtestUtils();
 
 interface Server {
@@ -190,6 +191,26 @@ for (const regtestExplorer of regtestExplorers) {
         expect(txCount > 0).toEqual(true);
       }
     }, 20000);
+    test(`fetchBlockStatus`, async () => {
+      const tipHeight = await explorer.fetchBlockHeight();
+      const blockStatus = await explorer.fetchBlockStatus(tipHeight);
+      expect(blockStatus?.blockTime).toBeDefined();
+      expect(blockStatus?.irreversible).toBe(false);
+      const currentTime = Math.floor(Date.now() / 1000); // current time in seconds
+      const timeDifference = Math.abs(
+        currentTime - (blockStatus?.blockTime || 0)
+      );
+      expect(timeDifference).toBeLessThan(10); //Note this block was mined a few secs ago
+      const headerHex = (await regtestUtils.dhttp({
+        method: 'GET',
+        url: API_URL + '/b/' + blockStatus?.blockHash + '/header'
+      })) as string;
+      const headerBuffer = Buffer.from(headerHex, 'hex');
+      const header = Block.fromBuffer(headerBuffer);
+      expect(blockStatus?.blockTime).toBe(header.timestamp);
+      expect(blockStatus?.blockHash).toBe(header.getId());
+      expect(blockStatus?.blockHeight).toBe(tipHeight);
+    });
     test('close', async () => {
       await explorer.close();
     });
@@ -254,6 +275,18 @@ describe('Explorer: Tests with public servers', () => {
         prevIndex = index;
       }
     }, 30000);
+    test(`fetchBlockStatus using ${explorerName}`, async () => {
+      const blockStatus = await explorer.fetchBlockStatus(847612);
+      expect(blockStatus?.blockTime).toBe(1718187771);
+      expect(blockStatus?.blockHash).toBe(
+        '00000000000000000000134f8f660b67822a1bff2657887428745ccdee1e2900'
+      );
+      expect(blockStatus?.blockHeight).toBe(847612);
+      expect(blockStatus?.irreversible).toBe(true);
+      // Make sure caching works:
+      const blockStatus2 = await explorer.fetchBlockStatus(847612);
+      expect(blockStatus2).toBe(blockStatus); // Checks reference equality
+    }, 10000);
     test(`close ${explorerName}`, async () => {
       await explorer.close();
       //await new Promise(r => setTimeout(r, 9000));
