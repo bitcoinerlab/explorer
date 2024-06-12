@@ -4,7 +4,7 @@ import ElectrumClient from 'electrum-client';
 import { checkFeeEstimates } from './checkFeeEstimates';
 //API: https://electrumx.readthedocs.io/en/latest/protocol-methods.html
 
-import { networks, Network } from 'bitcoinjs-lib';
+import { networks, Network, Block } from 'bitcoinjs-lib';
 import {
   ELECTRUM_BLOCKSTREAM_HOST,
   ELECTRUM_BLOCKSTREAM_PORT,
@@ -18,6 +18,7 @@ import {
 } from './constants';
 import {
   Explorer,
+  BlockStatus,
   IRREV_CONF_THRESH,
   MAX_TX_PER_SCRIPTPUBKEY
 } from './interface';
@@ -71,10 +72,11 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
 
 export class ElectrumExplorer implements Explorer {
   #irrevConfThresh: number;
-  #blockTipHeight!: number;
+  #tipBlockHeight!: number;
   #maxTxPerScriptPubKey: number;
   #pingInterval!: ReturnType<typeof setTimeout> | undefined;
   #client!: ElectrumClient | undefined;
+  #blockStatusMap: Map<number, BlockStatus> = new Map();
 
   #host: string;
   #port: number;
@@ -155,7 +157,7 @@ export class ElectrumExplorer implements Explorer {
       });
       this.#client.subscribe.on(
         'blockchain.headers.subscribe',
-        (headers: Array<{ height: number }>) => {
+        (headers: Array<{ height: number; hex: string }>) => {
           if (Array.isArray(headers)) {
             for (const header of headers) {
               this.#updateBlockTipHeight(header);
@@ -191,6 +193,24 @@ export class ElectrumExplorer implements Explorer {
   }
 
   /**
+   * Implements {@link Explorer#fetchBlockStatus}.
+   */
+  async fetchBlockStatus(
+    blockHeight: number
+  ): Promise<BlockStatus | undefined> {
+    let blockStatus = this.#blockStatusMap.get(blockHeight);
+    if (blockStatus && blockStatus.irreversible) return blockStatus;
+    if (blockHeight > this.#tipBlockHeight) return;
+
+    const client = await this.#getClient();
+    const headerHex = await client.blockchainBlock_header(blockHeight);
+    //cache header info to skip queries in fetchBlockStatus
+    blockStatus = this.#updateBlockStatusMap(blockHeight, headerHex);
+
+    return blockStatus;
+  }
+
+  /**
    * Implements {@link Explorer#close}.
    */
   async close(): Promise<void> {
@@ -213,21 +233,42 @@ export class ElectrumExplorer implements Explorer {
     }
   }
 
-  #updateBlockTipHeight(header: { height: number }) {
+  #updateBlockStatusMap(blockHeight: number, headerHex: string): BlockStatus {
+    let blockStatus = this.#blockStatusMap.get(blockHeight);
+    if (blockStatus && blockStatus.irreversible) return blockStatus;
+
+    const headerBuffer = Buffer.from(headerHex, 'hex');
+    const header = Block.fromBuffer(headerBuffer);
+
+    const blockHash = header.getId();
+    const blockTime = header.timestamp;
+    const numConfirmations = this.#tipBlockHeight - blockHeight + 1;
+    const irreversible = numConfirmations >= this.#irrevConfThresh;
+
+    blockStatus = { blockHeight, blockHash, blockTime, irreversible };
+    this.#blockStatusMap.set(blockHeight, blockStatus);
+
+    return blockStatus;
+  }
+
+  #updateBlockTipHeight(header: { height: number; hex: string }) {
     if (
       header &&
+      header.hex &&
       header.height &&
-      (typeof this.#blockTipHeight === 'undefined' ||
-        header.height > this.#blockTipHeight)
+      (typeof this.#tipBlockHeight === 'undefined' ||
+        header.height > this.#tipBlockHeight)
     ) {
-      this.#blockTipHeight = header.height;
-      //this.#blockTime = Math.floor(+new Date() / 1000);
+      this.#tipBlockHeight = header.height;
+
+      //cache header info to skip queries in fetchBlockStatus
+      this.#updateBlockStatusMap(header.height, header.hex);
     }
   }
 
-  async getBlockHeight() {
-    return this.#blockTipHeight;
-  }
+  //async #getBlockHeight() {
+  //  return this.#tipBlockHeight;
+  //}
 
   /**
    * Implements {@link Explorer#fetchAddress}.
@@ -309,13 +350,13 @@ export class ElectrumExplorer implements Explorer {
    */
   async fetchBlockHeight(): Promise<number> {
     //Get's the client even if we don't need to use it. We call this so that it
-    //throws if it's not connected (and this.#blockTipHeight is erroneous)
+    //throws if it's not connected (and this.#tipBlockHeight is erroneous)
     await this.#getClient();
-    if (this.#blockTipHeight === undefined)
+    if (this.#tipBlockHeight === undefined)
       throw new Error(
         `Error: block tip height has not been retrieved yet. Probably not connected`
       );
-    return this.#blockTipHeight;
+    return this.#tipBlockHeight;
   }
 
   /**
@@ -354,14 +395,14 @@ export class ElectrumExplorer implements Explorer {
     const transactionHistory = history.map(({ tx_hash, height }) => {
       const txId = tx_hash;
       const blockHeight: number = height || 0;
-      if (blockHeight > this.#blockTipHeight) {
+      if (blockHeight > this.#tipBlockHeight) {
         console.warn(
-          `tx ${tx_hash} block height ${blockHeight} larger than the tip ${this.#blockTipHeight}`
+          `tx ${tx_hash} block height ${blockHeight} larger than the tip ${this.#tipBlockHeight}`
         );
-        this.#blockTipHeight = blockHeight;
+        this.#tipBlockHeight = blockHeight;
       }
       const numConfirmations = blockHeight
-        ? this.#blockTipHeight - blockHeight + 1
+        ? this.#tipBlockHeight - blockHeight + 1
         : 0;
       const irreversible = numConfirmations >= this.#irrevConfThresh;
       return { txId, blockHeight, irreversible };

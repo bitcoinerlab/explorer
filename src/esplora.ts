@@ -4,6 +4,7 @@ import { ESPLORA_BLOCKSTREAM_URL } from './constants';
 import { reverseScriptHash } from './address';
 
 import {
+  BlockStatus,
   Explorer,
   IRREV_CONF_THRESH,
   MAX_TX_PER_SCRIPTPUBKEY
@@ -60,10 +61,11 @@ function isValidHttpUrl(string: string): boolean {
 export class EsploraExplorer implements Explorer {
   #irrevConfThresh: number;
   #BLOCK_HEIGHT_CACHE_TIME: number = 3; //cache for 3 seconds at most
-  #cachedBlockTipHeight: number = 0;
-  #blockTipHeightCacheTime: number = 0;
+  #cachedTipBlockHeight: number = 0;
+  #tipBlockHeightCacheTime: number = 0;
   #url: string;
   #maxTxPerScriptPubKey: number;
+  #blockStatusMap: Map<number, BlockStatus> = new Map();
 
   /**
    * @param {object} params
@@ -93,6 +95,37 @@ export class EsploraExplorer implements Explorer {
   }
   async close() {
     return;
+  }
+
+  /**
+   * Implements {@link Explorer#fetchBlockStatus}.
+   */
+  async fetchBlockStatus(
+    blockHeight: number
+  ): Promise<BlockStatus | undefined> {
+    let blockStatus = this.#blockStatusMap.get(blockHeight);
+    if (blockStatus && blockStatus.irreversible) return blockStatus;
+    if (blockHeight > (await this.#getTipBlockHeight())) return;
+
+    const blockHash = await esploraFetchText(
+      `${this.#url}/block-height/${blockHeight}`
+    );
+    const fetchedBlock = (await esploraFetchJson(
+      `${this.#url}/block/${blockHash}`
+    )) as { timestamp: number };
+    const tipBlockHeight = await this.#getTipBlockHeight(blockHeight);
+    const numConfirmations = tipBlockHeight - blockHeight + 1;
+    const irreversible = numConfirmations >= this.#irrevConfThresh;
+    blockStatus = {
+      blockHeight,
+      blockHash,
+      blockTime: fetchedBlock.timestamp,
+      irreversible
+    };
+    //cache this info to skip queries in fetchBlockStatus
+    this.#blockStatusMap.set(blockHeight, blockStatus);
+
+    return blockStatus;
   }
 
   async fetchAddressOrScriptHash({
@@ -193,28 +226,28 @@ export class EsploraExplorer implements Explorer {
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
-    const blockTipHeight = parseInt(
+    const tipBlockHeight = parseInt(
       await esploraFetchText(`${this.#url}/blocks/tip/height`)
     );
-    this.#cachedBlockTipHeight = blockTipHeight;
-    this.#blockTipHeightCacheTime = Math.floor(+new Date() / 1000);
-    return blockTipHeight;
+    this.#cachedTipBlockHeight = tipBlockHeight;
+    this.#tipBlockHeightCacheTime = Math.floor(+new Date() / 1000);
+    return tipBlockHeight;
   }
 
   /** Returns the height of the last block.
    * It does not fetch it, unless either:
    *    fetched before more than #BLOCK_HEIGHT_CACHE_TIME ago
-   *    the #cachedBlockTipHeight is behind the blockHeight passed as a param
+   *    the #cachedTipBlockHeight is behind the blockHeight passed as a param
    */
 
-  async #getBlockHeight(blockHeight?: number): Promise<number> {
+  async #getTipBlockHeight(blockHeight?: number): Promise<number> {
     const now: number = +new Date() / 1000;
     if (
-      now - this.#blockTipHeightCacheTime > this.#BLOCK_HEIGHT_CACHE_TIME ||
-      (blockHeight && blockHeight > this.#blockTipHeightCacheTime)
+      now - this.#tipBlockHeightCacheTime > this.#BLOCK_HEIGHT_CACHE_TIME ||
+      (blockHeight && blockHeight > this.#cachedTipBlockHeight)
     )
       await this.fetchBlockHeight();
-    return this.#cachedBlockTipHeight;
+    return this.#cachedTipBlockHeight;
   }
 
   /**
@@ -242,7 +275,14 @@ export class EsploraExplorer implements Explorer {
 
     const txHistory = [];
 
-    type FetchedTxs = Array<{ txid: string; status: { block_height: number } }>;
+    type FetchedTxs = Array<{
+      txid: string;
+      status: {
+        block_height: number | null;
+        block_hash: string | null;
+        block_time: number | null;
+      };
+    }>;
 
     let fetchedTxs: FetchedTxs;
     let lastTxid: string | undefined;
@@ -258,15 +298,23 @@ export class EsploraExplorer implements Explorer {
       if (lastTx) {
         if (lastTx.status.block_height !== 0) lastTxid = lastTx.txid;
         for (const fetchedTx of fetchedTxs) {
+          let irreversible = false;
+          let blockHeight = 0;
           const txId = fetchedTx.txid;
           const status = fetchedTx.status;
-          const blockHeight = status.block_height || 0;
-          const blockTipHeight = await this.#getBlockHeight(blockHeight);
-          const numConfirmations =
-            blockHeight === 0 ? 0 : blockTipHeight - blockHeight + 1;
-          const irreversible =
-            blockHeight !== 0 && numConfirmations >= this.#irrevConfThresh;
-
+          if (status.block_hash && status.block_time && status.block_height) {
+            const tipBlockHeight = await this.#getTipBlockHeight(blockHeight);
+            blockHeight = status.block_height;
+            const numConfirmations = tipBlockHeight - blockHeight + 1;
+            irreversible = numConfirmations >= this.#irrevConfThresh;
+            //cache this info to skip queries in fetchBlockStatus
+            this.#blockStatusMap.set(status.block_height, {
+              blockHeight,
+              blockTime: status.block_time,
+              blockHash: status.block_hash,
+              irreversible
+            });
+          }
           txHistory.push({ txId, blockHeight, irreversible });
           if (txHistory.length > this.#maxTxPerScriptPubKey)
             throw new Error(`Too many transactions per address`);

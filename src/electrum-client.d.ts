@@ -39,5 +39,7 @@ declare module 'electrum-client' {
     blockchainEstimatefee(target: number): Promise<number>;
 
     blockchainTransaction_broadcast(txHex: string): Promise<string>;
+
+    blockchainBlock_header(height: number): Promise<string>;
   }
 }
