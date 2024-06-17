@@ -211,6 +211,13 @@ for (const regtestExplorer of regtestExplorers) {
       expect(blockStatus?.blockHash).toBe(header.getId());
       expect(blockStatus?.blockHeight).toBe(tipHeight);
     });
+    test(`Push errors`, async () => {
+      await expect(
+        explorer.push(
+          '02000000000101a181e1db4f39ca9b14d764373d919bb01bdaa771a39d61bfc45e4c73b33b6bee00000000171600146a166349647f19f776f9f8c4dc8604b36b854ae4ffffffff02a08601000000000017a914a44bb6bc3228487f4a120fd187b13c23a4886cfc878a0035000000000017a91490bb10362943c1dc6bc97bae807525e934fa9a898702483045022100e4b56cf9ea496604d4ecb9898b7b221a3237e6c9eb12bc1473cf6946ac9244390220215e54c0e3d1131088a56caeac2b21099f33317b865affaef22ee6f3b7ea37980121031dd46bf77dd63d55bab8209dd606b16167d8c75a663475cc5abf85deb64a565600000000'
+        ) //Push a problematic tx that has "Missing inputs"
+      ).rejects.toThrow(/bad-txns-inputs-missingorspent/);
+    });
     test('close', async () => {
       await explorer.close();
     });
