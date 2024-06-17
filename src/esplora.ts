@@ -20,7 +20,7 @@ async function esploraFetch(
   if (!response.ok) {
     const errorDetails = await response.text();
     throw new Error(
-      `Network request failed! Status code: ${response.status} (${response.statusText}). URL: ${response.url}. Server response: ${errorDetails}`
+      `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
     );
   }
   return response;

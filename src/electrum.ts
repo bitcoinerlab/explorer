@@ -44,6 +44,14 @@ const netModule =
 const tlsModule =
   typeof global !== 'undefined' && global.tls ? global.tls : tls;
 
+function getErrorMsg(error: unknown): string {
+  if (typeof error === 'string') {
+    return error;
+  } else {
+    return (error as Error).message;
+  }
+}
+
 function defaultElectrumServer(network: Network = networks.bitcoin): {
   host: string;
   port: number;
@@ -167,9 +175,8 @@ export class ElectrumExplorer implements Explorer {
       );
       const header = await this.#client.blockchainHeaders_subscribe();
       this.#updateBlockTipHeight(header);
-    } catch (_error: unknown) {
-      const error = _error as Error;
-      throw new Error(`Failed to init Electrum: ${error.message}`);
+    } catch (error: unknown) {
+      throw new Error(`Failed to init Electrum: ${getErrorMsg(error)}`);
     }
 
     // Ping every minute to keep connection alive. Reconnect on error.
@@ -181,11 +188,13 @@ export class ElectrumExplorer implements Explorer {
       }
       try {
         await this.#client.server_ping();
-      } catch (_error: unknown) {
-        const error = _error as Error;
+      } catch (error: unknown) {
         // Ping failed, stop pinging and reconnect
         await this.close();
-        console.warn('Reconnecting in 0.5s after ping error:', error.message);
+        console.warn(
+          'Reconnecting in 0.5s after ping error:',
+          getErrorMsg(error)
+        );
         await new Promise(resolve => setTimeout(resolve, 500));
         await this.connect();
       }
@@ -302,10 +311,11 @@ export class ElectrumExplorer implements Explorer {
        */
       client = await this.#getClient();
       history = await client.blockchainScripthash_getHistory(scriptHash);
-    } catch (_error: unknown) {
-      const error = _error as Error;
+    } catch (error: unknown) {
       throw new Error(
-        `Failed getting balance & history of ${scriptHash}: ${error.message}`
+        `Failed getting balance & history of ${scriptHash}: ${getErrorMsg(
+          error
+        )}`
       );
     }
     const _txCount = history.filter(tx => tx.height > 0).length;
@@ -333,9 +343,8 @@ export class ElectrumExplorer implements Explorer {
         const client = await this.#getClient();
         const fee = await client.blockchainEstimatefee(target);
         feeEstimates[target] = 100000 * fee;
-      } catch (_error: unknown) {
-        const error = _error as Error;
-        throw new Error(`Failed to fetch fee estimates: ${error.message}`);
+      } catch (error: unknown) {
+        throw new Error(`Failed to fetch fee estimates: ${getErrorMsg(error)}`);
       }
     }
     checkFeeEstimates(feeEstimates);
@@ -381,12 +390,11 @@ export class ElectrumExplorer implements Explorer {
     try {
       const client = await this.#getClient();
       history = await client.blockchainScripthash_getHistory(scriptHash);
-    } catch (_error: unknown) {
-      const error = _error as Error;
+    } catch (error: unknown) {
       throw new Error(
         `Failed to fetch transaction history for address/scriptHash "${
           scriptHash || address
-        }": ${error.message}`
+        }": ${getErrorMsg(error)}`
       );
     }
     if (history.length > this.#maxTxPerScriptPubKey)
@@ -422,10 +430,9 @@ export class ElectrumExplorer implements Explorer {
     try {
       const client = await this.#getClient();
       return await client.blockchainTransaction_get(txId);
-    } catch (_error: unknown) {
-      const error = _error as Error;
+    } catch (error: unknown) {
       throw new Error(
-        `Failed to fetch transaction tx for "${txId}": ${error.message}`
+        `Failed to fetch transaction tx for "${txId}": ${getErrorMsg(error)}`
       );
     }
   }
@@ -449,9 +456,8 @@ export class ElectrumExplorer implements Explorer {
       }
 
       return txId;
-    } catch (_error: unknown) {
-      const error = _error as Error;
-      throw new Error(`Failed to broadcast transaction: ${error.message}`);
+    } catch (error: unknown) {
+      throw new Error(`Failed to broadcast transaction: ${getErrorMsg(error)}`);
     }
   }
 }
