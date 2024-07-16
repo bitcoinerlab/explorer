@@ -293,7 +293,7 @@ describe('Explorer: Tests with public servers', () => {
       // Make sure caching works:
       const blockStatus2 = await explorer.fetchBlockStatus(847612);
       expect(blockStatus2).toBe(blockStatus); // Checks reference equality
-    }, 10000);
+    }, 30000);
     test(`close ${explorerName}`, async () => {
       await explorer.close();
       //await new Promise(r => setTimeout(r, 9000));

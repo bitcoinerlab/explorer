@@ -13,8 +13,8 @@ const log = (_message: unknown) => {};
  *
  * Constructor params:
  * @param maxRetries - Maximum number of retries for a fetch request upon
- * encountering a 429 status or general network errors. Default is 100.
- * @param unthrottleAfterCount - Number of consecutive successful fetches after
+ * encountering a 429 or 500 status or general network errors. Default is 100.
+ * @param unthrottleAfterOkCount - Number of consecutive successful fetches after
  * which the queue will automatically stop throttling. Default is 10.
  * @param unthrottleAfterTime - Time in milliseconds of inactivity after the
  * last fetch, upon which the queue will automatically stop throttling.
@@ -38,17 +38,22 @@ export class RequestQueue {
   private mustThrottle: boolean;
   private maxRetries: number;
   private consecutiveOkResponses: number;
-  private unthrottleAfterCount: number;
+  private unthrottleAfterOkCount: number;
   private unthrottleAfterTime: number;
   private throttleTime: number;
   private unthrottleTimeout: ReturnType<typeof setTimeout> | undefined;
   private concurrentTasks: number;
   private maxConcurrentTasks: number;
   constructor(
+    /**
+     * max num. retries on 429 or 500 status or if fetch throws
+     * (javascript fetch only throws on network down or CORS issues)
+     * if error is !=429 and != 500 and network is UP, then there are no retries
+     */
     maxRetries: number = 100,
     /** number of consecutive ok fetches that will automatically unthrottle
      * the system */
-    unthrottleAfterCount: number = 10,
+    unthrottleAfterOkCount: number = 10,
     /** inactivity time after last fetch that will automatically unthrottle
      * the system */
     unthrottleAfterTime: number = 2000, // 2 second: number = 200, 2 seconds after last fetch, deactivate sleeping for each call
@@ -60,7 +65,7 @@ export class RequestQueue {
     maxConcurrentTasks: number = 30 // 50% over the typical gapLimit
   ) {
     this.maxRetries = maxRetries;
-    this.unthrottleAfterCount = unthrottleAfterCount;
+    this.unthrottleAfterOkCount = unthrottleAfterOkCount;
     this.unthrottleAfterTime = unthrottleAfterTime;
     this.throttleTime = throttleTime;
     this.maxConcurrentTasks = maxConcurrentTasks;
@@ -92,34 +97,37 @@ export class RequestQueue {
             this.unthrottleTimeout = undefined;
           }, this.unthrottleAfterTime);
 
-          //if (response.status === 429 && retries < this.maxRetries) {
           if (
             (response.status === 429 || response.status === 500) &&
             retries < this.maxRetries
           ) {
+            // Retry with increased delay
             this.mustThrottle = true;
             this.consecutiveOkResponses = 0;
             log(`${response.status}, on trial ${retries} - Throttling`);
             retries++;
-            continue; // Retry with increased delay
+          } else {
+            this.consecutiveOkResponses++;
+            if (this.consecutiveOkResponses > this.unthrottleAfterOkCount) {
+              this.mustThrottle = false;
+              log(`UN-throttling`);
+            }
+            this.concurrentTasks--;
+            return response; // Resolve on successful response or max retries reached
           }
-
-          this.consecutiveOkResponses++;
-          if (this.consecutiveOkResponses > this.unthrottleAfterCount) {
-            this.mustThrottle = false;
-            log(`UN-throttling`);
-          }
-          this.concurrentTasks--;
-          return response; // Resolve on successful response or max retries reached
         } catch (error) {
-          log(`unknowon Error`);
+          log(`unknown Error`);
           this.mustThrottle = true;
           this.consecutiveOkResponses = 0;
-          retries++;
+          if (retries === this.maxRetries) {
+            this.concurrentTasks--;
+            throw error; //not going to try again - rethrow original error
+          } else retries++;
         }
       }
-      this.concurrentTasks--;
-      throw new Error('Maximum retries exceeded');
+      throw new Error(
+        'RequestQueue.fetch should have returned a valid response or thrown before reaching this point'
+      );
     };
 
     while (this.concurrentTasks >= this.maxConcurrentTasks) {
