@@ -26,6 +26,26 @@ export interface Explorer {
   connect(): Promise<void>;
 
   /**
+   * Checks if the connection to the server is alive.
+   *
+   * For the Electrum client, this method directly checks the server's
+   * availability by sending a ping.
+   * It returns `true` if the ping is successful, otherwise `false`.
+   *
+   * For the Esplora client, this method checks the server's availability by
+   * attempting to fetch the current block height.
+   * Note that the Esplora client returns `true` even after closing the
+   * connection, because an HTTP connection is stateless and not persistent.
+   * Thus, for Esplora, `isConnected` effectively checks if the server can
+   * respond to requests.
+   *
+   * @async
+   * @returns {Promise<boolean>} Promise resolving to `true` if the server is
+   * reachable and responding; otherwise, `false`.
+   */
+  isConnected(): Promise<boolean>;
+
+  /**
    * Close the connection.
    * @async
    */

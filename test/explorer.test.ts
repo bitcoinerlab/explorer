@@ -105,6 +105,9 @@ for (const regtestExplorer of regtestExplorers) {
     test(`Connect`, async () => {
       await expect(explorer.connect()).resolves.not.toThrow();
     });
+    test(`isConnected`, async () => {
+      await expect(explorer.isConnected()).resolves.toBe(true);
+    });
 
     test('fetchAddress', async () => {
       expect({
@@ -246,7 +249,8 @@ describe('Explorer: Tests with public servers', () => {
         }
       } else throw new Error('Please, pass a correct service');
       await expect(explorer.connect()).resolves.not.toThrow();
-    });
+      await expect(explorer.isConnected()).resolves.toBe(true);
+    }, 10000);
     ////As of May 19th, 2023, 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 has > 90K txs
     ////electrum (depending on the server): history too large / server busy - request timed out
     ////esplora will: Too many transactions per address
