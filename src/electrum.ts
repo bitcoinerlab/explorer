@@ -220,6 +220,20 @@ export class ElectrumExplorer implements Explorer {
   }
 
   /**
+   * Implements {@link Explorer#isConnected}.
+   *  Checks server connectivity by sending a ping. Returns `true` if the ping
+   * is successful, otherwise `false`.
+   */
+  async isConnected(): Promise<boolean> {
+    if (this.#client === undefined) return false;
+    try {
+      await this.#client.server_ping();
+      return true;
+    } catch {}
+    return false;
+  }
+
+  /**
    * Implements {@link Explorer#close}.
    */
   async close(): Promise<void> {
