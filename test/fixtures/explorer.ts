@@ -80,10 +80,11 @@ export const fixtures = {
         protocol: 'ssl'
       },
       {
-        //will default to blockstream electrum
+        //will default to blockstream or mempool.space electrum
         service: ELECTRUM
       },
       {
+        //will default to blockstream or mempool.space esplora
         service: ESPLORA
       }
     ]

@@ -10,40 +10,7 @@ import {
   MAX_TX_PER_SCRIPTPUBKEY
 } from './interface';
 
-import { RequestQueue } from './requestQueue';
-const requestQueue = new RequestQueue();
-
-async function esploraFetch(
-  ...args: Parameters<typeof fetch>
-): Promise<Response> {
-  const response = await requestQueue.fetch(...args);
-  if (!response.ok) {
-    const errorDetails = await response.text();
-    throw new Error(
-      `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
-    );
-  }
-  return response;
-}
-
-async function esploraFetchJson(
-  ...args: Parameters<typeof fetch>
-): Promise<unknown> {
-  const response = await esploraFetch(...args);
-  try {
-    const json = await response.json();
-    return json;
-  } catch (error) {
-    throw new Error('Failed to parse server response as JSON!');
-  }
-}
-
-async function esploraFetchText(
-  ...args: Parameters<typeof fetch>
-): Promise<string> {
-  const response = await esploraFetch(...args);
-  return await response.text();
-}
+import { RequestQueue, RequestQueueParams } from './requestQueue';
 
 function isValidHttpUrl(string: string): boolean {
   let url;
@@ -66,6 +33,7 @@ export class EsploraExplorer implements Explorer {
   #url: string;
   #maxTxPerScriptPubKey: number;
   #blockStatusMap: Map<number, BlockStatus> = new Map();
+  #requestQueue: RequestQueue;
 
   /**
    * @param {object} params
@@ -73,13 +41,17 @@ export class EsploraExplorer implements Explorer {
    */
   constructor({
     url = ESPLORA_BLOCKSTREAM_URL,
+    //url = ESPLORA_MEMPOOLSPACE_URL,
     irrevConfThresh = IRREV_CONF_THRESH,
-    maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY
+    maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY,
+    requestQueueParams = undefined
   }: {
     url?: string;
     irrevConfThresh?: number;
     maxTxPerScriptPubKey?: number;
+    requestQueueParams?: RequestQueueParams;
   } = {}) {
+    this.#requestQueue = new RequestQueue(requestQueueParams);
     if (typeof url !== 'string' || !isValidHttpUrl(url)) {
       throw new Error(
         'Specify a valid URL for Esplora and nothing else. Note that the url can include the port: http://api.example.com:8080/api'
@@ -88,6 +60,36 @@ export class EsploraExplorer implements Explorer {
     this.#url = url;
     this.#irrevConfThresh = irrevConfThresh;
     this.#maxTxPerScriptPubKey = maxTxPerScriptPubKey;
+  }
+
+  async #esploraFetch(...args: Parameters<typeof fetch>): Promise<Response> {
+    const response = await this.#requestQueue.fetch(...args);
+    if (!response.ok) {
+      const errorDetails = await response.text();
+      throw new Error(
+        `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
+      );
+    }
+    return response;
+  }
+
+  async #esploraFetchJson(...args: Parameters<typeof fetch>): Promise<unknown> {
+    const response = await this.#esploraFetch(...args);
+    const responseText = await response.text();
+    try {
+      const json = JSON.parse(responseText);
+      return json;
+    } catch (error) {
+      console.warn(error);
+      throw new Error(
+        `Failed to parse server response as JSON fetching ${response.url}: ${responseText}`
+      );
+    }
+  }
+
+  async #esploraFetchText(...args: Parameters<typeof fetch>): Promise<string> {
+    const response = await this.#esploraFetch(...args);
+    return await response.text();
   }
 
   async connect() {
@@ -119,10 +121,10 @@ export class EsploraExplorer implements Explorer {
     if (blockStatus && blockStatus.irreversible) return blockStatus;
     if (blockHeight > (await this.#getTipBlockHeight())) return;
 
-    const blockHash = await esploraFetchText(
+    const blockHash = await this.#esploraFetchText(
       `${this.#url}/block-height/${blockHeight}`
     );
-    const fetchedBlock = (await esploraFetchJson(
+    const fetchedBlock = (await this.#esploraFetchJson(
       `${this.#url}/block/${blockHash}`
     )) as { timestamp: number };
     const tipBlockHeight = await this.#getTipBlockHeight(blockHeight);
@@ -170,7 +172,7 @@ export class EsploraExplorer implements Explorer {
 
     for (const chainType of ['chain_stats', 'mempool_stats']) {
       const fetchedData = (
-        (await esploraFetchJson(`${this.#url}/${path}`)) as {
+        (await this.#esploraFetchJson(`${this.#url}/${path}`)) as {
           [key: string]: StatType;
         }
       )[chainType];
@@ -226,7 +228,9 @@ export class EsploraExplorer implements Explorer {
    * Implements {@link Explorer#fetchFeeEstimates}.
    */
   async fetchFeeEstimates(): Promise<Record<string, number>> {
-    const feeEstimates = await esploraFetchJson(`${this.#url}/fee-estimates`);
+    const feeEstimates = await this.#esploraFetchJson(
+      `${this.#url}/fee-estimates`
+    );
     checkFeeEstimates(feeEstimates as Record<string, number>);
     return feeEstimates as Record<string, number>;
   }
@@ -239,7 +243,7 @@ export class EsploraExplorer implements Explorer {
    */
   async fetchBlockHeight(): Promise<number> {
     const tipBlockHeight = parseInt(
-      await esploraFetchText(`${this.#url}/blocks/tip/height`)
+      await this.#esploraFetchText(`${this.#url}/blocks/tip/height`)
     );
     this.#cachedTipBlockHeight = tipBlockHeight;
     this.#tipBlockHeightCacheTime = Math.floor(+new Date() / 1000);
@@ -304,7 +308,7 @@ export class EsploraExplorer implements Explorer {
       const url = `${this.#url}/${type}/${value}/txs${
         lastTxid ? `/chain/${lastTxid}` : ''
       }`;
-      fetchedTxs = (await esploraFetchJson(url)) as FetchedTxs;
+      fetchedTxs = (await this.#esploraFetchJson(url)) as FetchedTxs;
       const lastTx = fetchedTxs[fetchedTxs.length - 1];
       lastTxid = undefined;
       if (lastTx) {
@@ -345,7 +349,7 @@ export class EsploraExplorer implements Explorer {
    * @returns {Promise<string>} A promise that resolves to the raw transaction data as a string.
    */
   async fetchTx(txId: string): Promise<string> {
-    return esploraFetchText(`${this.#url}/tx/${txId}/hex`);
+    return this.#esploraFetchText(`${this.#url}/tx/${txId}/hex`);
   }
 
   /**
@@ -356,7 +360,7 @@ export class EsploraExplorer implements Explorer {
    * @throws {Error} If the transaction is invalid or fails to be broadcasted.
    */
   async push(txHex: string): Promise<string> {
-    const response = await esploraFetch(`${this.#url}/tx`, {
+    const response = await this.#esploraFetch(`${this.#url}/tx`, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain'

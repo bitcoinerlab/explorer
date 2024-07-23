@@ -232,9 +232,11 @@ describe('Explorer: Tests with public servers', () => {
     let explorer: Explorer;
     const explorerName =
       server.service + ' on ' + (server.host || 'default host');
-    test(`Create and connect to ${server.service} on ${
-      server.service === ELECTRUM ? server.host : server.url
-    }`, async () => {
+    const hostOrUrl =
+      server.service === ELECTRUM
+        ? server.host || 'default Electrum host'
+        : server.url || 'default Esplora host';
+    test(`Create and connect to ${server.service} on ${hostOrUrl}`, async () => {
       if (server.service === ELECTRUM) {
         try {
           explorer = new ElectrumExplorer(server);
@@ -250,7 +252,7 @@ describe('Explorer: Tests with public servers', () => {
       } else throw new Error('Please, pass a correct service');
       await expect(explorer.connect()).resolves.not.toThrow();
       await expect(explorer.isConnected()).resolves.toBe(true);
-    }, 10000);
+    }, 30000);
     ////As of May 19th, 2023, 19iqYbeATe4RxghQZJnYVFU4mjUUu76EA6 has > 90K txs
     ////electrum (depending on the server): history too large / server busy - request timed out
     ////esplora will: Too many transactions per address
@@ -285,7 +287,7 @@ describe('Explorer: Tests with public servers', () => {
           );
         prevIndex = index;
       }
-    }, 30000);
+    }, 60000);
     test(`fetchBlockStatus using ${explorerName}`, async () => {
       const blockStatus = await explorer.fetchBlockStatus(847612);
       expect(blockStatus?.blockTime).toBe(1718187771);
