@@ -1,5 +1,69 @@
-const log = (_message: unknown) => {};
-//const log = (_message: unknown) => console.log(_message);
+/**
+ * Parameters for configuring the RequestQueue. This queue is used in
+ * HTTP fetch operations in Esplora clients and is an optional input
+ * parameter in the EsploraExplorer constructor.
+ */
+export type RequestQueueParams = {
+  /**
+   * Maximum number of attempts for soft errors (429 or 50x status).
+   * Also applies to network-related throws (e.g., network down or CORS issues).
+   * Defaults to 100 attempts.
+   */
+  maxAttemptsForSoftErrors?: number;
+  /**
+   * Maximum number of attempts for hard errors (other than 429 or 50x).
+   * Limits the number of attempts for errors other than 429 and 50x, assuming
+   * the network is up.
+   * Defaults to 10 attempts.
+   */
+  maxAttemptsForHardErrors?: number;
+  /**
+   * Number of consecutive successful fetches required to unthrottle.
+   * Automatically stops throttling after this many successful responses.
+   * Defaults to 10 consecutive successes.
+   */
+  unthrottleAfterOkCount?: number;
+  /**
+   * Time in milliseconds of inactivity after the last fetch before unthrottling.
+   * Automatically stops throttling if inactive for this period.
+   * Defaults to 2000ms (2 seconds).
+   */
+  unthrottleAfterTime?: number;
+  /**
+   * Time in milliseconds to wait before retrying a fetch request when throttled.
+   * Determines the delay between attempts when throttling is active.
+   * Defaults to 200ms - 5 req/sec - the 5 r/s of Blockstream esplora:
+   * limit_req_zone $limit_key zone=heavylimitzone:10m rate=5r/s;
+   * https://github.com/Blockstream/esplora/blob/master/contrib/nginx.conf.in
+   */
+  throttleTime?: number;
+  /**
+   * Maximum number of concurrent fetch tasks allowed.
+   * New fetch tasks will wait throttleTime before retrying if limit is reached.
+   * Note that even if maxConcurrentTasks is set, new tasks are not added if
+   * the server is struggling (throttling responses).
+   * Blockstream allows up to 10 concurrent tasks:
+   * limit_req zone=heavylimitzone burst=10 nodelay
+   * https://github.com/Blockstream/esplora/blob/master/contrib/nginx.conf.in
+   * May be interesting to limit it to lower to match the 5 requests / sec limit,
+   * with a throttleTime of 200 ms.
+   * Another approch is setting 30 maxConcurrentTasks which is 50% more of typical
+   * gapLimit.
+   */
+  maxConcurrentTasks?: number;
+};
+
+/**
+ * Generates a randomized throttle time around the mean time to prevent
+ * synchronized retry attempts. This helps distribute the load more evenly
+ * across multiple retries, reducing the risk of overwhelming the server or network.
+ *
+ * @param {number} meanTime - The average throttle time in milliseconds.
+ */
+const getRandomizedThrottleTime = (meanTime: number) => {
+  const variance = meanTime * 0.2; // 20% variance
+  return meanTime + (Math.random() * variance * 2 - variance);
+};
 
 /**
  * Manages rate-limited fetch requests with automated throttling control. This
@@ -11,32 +75,16 @@ const log = (_message: unknown) => {};
  * requests. It automatically throttles requests when necessary and unthrottles
  * after a set number of successful responses or a period of inactivity.
  *
- * Constructor params:
- * @param maxRetries - Maximum number of retries for a fetch request upon
- * encountering a 429 or 500 status or general network errors. Default is 100.
- * @param unthrottleAfterOkCount - Number of consecutive successful fetches after
- * which the queue will automatically stop throttling. Default is 10.
- * @param unthrottleAfterTime - Time in milliseconds of inactivity after the
- * last fetch, upon which the queue will automatically stop throttling.
- * Default is 2000ms (2 seconds).
- * @param throttleTime - Time in milliseconds to wait before retrying a fetch
- * request when throttling is active. Default is 200ms.
- * @param maxConcurrentTasks - Maximum number of concurrent fetch tasks allowed.
- * When this limit is reached, new fetch tasks will wait `throttleTime` before
- * trying again. Default is 30.
+ * For constructor params see type RequestQueueParams.
  *
- * Usage:
- * ```
- * const queue = new RequestQueue();
- * queue.fetch('https://example.com/api/data');
- * ```
- * See:
+ * Related:
  * https://github.com/Blockstream/esplora/issues/449#issuecomment-1546000515
  */
 
 export class RequestQueue {
   private mustThrottle: boolean;
-  private maxRetries: number;
+  private maxAttemptsForSoftErrors: number; //429, 50x and exceptions
+  private maxAttemptsForHardErrors: number; //only exceptions
   private consecutiveOkResponses: number;
   private unthrottleAfterOkCount: number;
   private unthrottleAfterTime: number;
@@ -44,27 +92,17 @@ export class RequestQueue {
   private unthrottleTimeout: ReturnType<typeof setTimeout> | undefined;
   private concurrentTasks: number;
   private maxConcurrentTasks: number;
-  constructor(
-    /**
-     * max num. retries on 429 or 500 status or if fetch throws
-     * (javascript fetch only throws on network down or CORS issues)
-     * if error is !=429 and != 500 and network is UP, then there are no retries
-     */
-    maxRetries: number = 100,
-    /** number of consecutive ok fetches that will automatically unthrottle
-     * the system */
-    unthrottleAfterOkCount: number = 10,
-    /** inactivity time after last fetch that will automatically unthrottle
-     * the system */
-    unthrottleAfterTime: number = 2000, // 2 second: number = 200, 2 seconds after last fetch, deactivate sleeping for each call
-    throttleTime: number = 200,
-    /** max number of fetch tasks that are allowed to be running concurrently.
-     * When reaching maxConcurrentTasks, then sleep throttleTime and try
-     * again
-     */
-    maxConcurrentTasks: number = 30 // 50% over the typical gapLimit
-  ) {
-    this.maxRetries = maxRetries;
+
+  constructor({
+    maxAttemptsForSoftErrors = 100,
+    maxAttemptsForHardErrors = 5,
+    unthrottleAfterOkCount = 10,
+    unthrottleAfterTime = 2000,
+    throttleTime = 200,
+    maxConcurrentTasks = 30
+  }: RequestQueueParams = {}) {
+    this.maxAttemptsForSoftErrors = maxAttemptsForSoftErrors;
+    this.maxAttemptsForHardErrors = maxAttemptsForHardErrors;
     this.unthrottleAfterOkCount = unthrottleAfterOkCount;
     this.unthrottleAfterTime = unthrottleAfterTime;
     this.throttleTime = throttleTime;
@@ -77,62 +115,104 @@ export class RequestQueue {
 
   async fetch(...args: Parameters<typeof fetch>): Promise<Response> {
     const task = async () => {
-      log(`New task started, concurrentTasks: ${this.concurrentTasks}`);
-      let retries = 0;
+      let softErrorAttempts = 0;
+      let hardErrorAttempts = 0;
 
-      while (retries <= this.maxRetries) {
-        log(`New fetch trial ${retries}`);
-        //sleep
+      while (
+        softErrorAttempts < this.maxAttemptsForSoftErrors &&
+        hardErrorAttempts < this.maxAttemptsForHardErrors
+      ) {
+        // Sleep if throttling is active
         if (this.mustThrottle) {
-          log(`Throttled - sleeping ${this.throttleTime}`);
-          await new Promise(r => setTimeout(r, this.throttleTime));
+          const randomizedThrottleTime = getRandomizedThrottleTime(
+            this.throttleTime
+          );
+          await new Promise(r => setTimeout(r, randomizedThrottleTime));
         }
         try {
-          log(`Real fetch`);
           const response = await fetch(...args);
-          if (this.unthrottleTimeout) clearTimeout(this.unthrottleTimeout);
-          this.unthrottleTimeout = setTimeout(() => {
-            log(`UN-throttling after time ${this.unthrottleAfterTime}`);
-            this.mustThrottle = false;
-            this.unthrottleTimeout = undefined;
-          }, this.unthrottleAfterTime);
 
-          if (
-            (response.status === 429 || response.status === 500) &&
-            retries < this.maxRetries
-          ) {
+          const isSoftError =
+            response.status === 429 ||
+            response.status === 500 ||
+            //501 is not implemented, don't add this one
+            response.status === 502 ||
+            response.status === 503 ||
+            response.status === 504;
+
+          const isLastSoftErrorAttempt =
+            softErrorAttempts + 1 >= this.maxAttemptsForSoftErrors;
+
+          if (isSoftError) {
             // Retry with increased delay
             this.mustThrottle = true;
             this.consecutiveOkResponses = 0;
-            log(`${response.status}, on trial ${retries} - Throttling`);
-            retries++;
+            if (isLastSoftErrorAttempt) {
+              this.concurrentTasks--;
+              console.warn(
+                `Max attempts reached soft ${softErrorAttempts + 1} / hard ${
+                  hardErrorAttempts + 1
+                } - returning SOFT error for ${
+                  response.status
+                }. Consider reducing rate limits and/or increasing maxAttemptsForSoftErrors.`
+              );
+              return response; //return whatever the error response was
+            } else {
+              softErrorAttempts++;
+            }
           } else {
+            if (softErrorAttempts || hardErrorAttempts)
+              console.warn(
+                `Recovered from ${softErrorAttempts} soft / ${hardErrorAttempts} hard errored attempts. Consider reducing rate limits.`
+              );
+            // this was an OK response
             this.consecutiveOkResponses++;
             if (this.consecutiveOkResponses > this.unthrottleAfterOkCount) {
               this.mustThrottle = false;
-              log(`UN-throttling`);
             }
             this.concurrentTasks--;
-            return response; // Resolve on successful response or max retries reached
+            return response;
           }
         } catch (error) {
-          log(`unknown Error`);
           this.mustThrottle = true;
           this.consecutiveOkResponses = 0;
-          if (retries === this.maxRetries) {
+          if (
+            softErrorAttempts >= this.maxAttemptsForSoftErrors - 1 ||
+            hardErrorAttempts >= this.maxAttemptsForHardErrors - 1
+          ) {
             this.concurrentTasks--;
+            console.warn(
+              `Max attempts reached soft ${softErrorAttempts + 1} / hard ${
+                hardErrorAttempts + 1
+              } - rethrowing error. Consider reducing rate limits and/or increasing maxAttemptsForSoftErrors & maxAttemptsForSoftErrors.`
+            );
             throw error; //not going to try again - rethrow original error
-          } else retries++;
+          } else {
+            softErrorAttempts++;
+            hardErrorAttempts++;
+          }
         }
+        //Fetch performed. Now disable throttling after unthrottleAfterTime
+        //However, clear the wait if a new fetch comes
+        if (this.unthrottleTimeout) clearTimeout(this.unthrottleTimeout);
+        this.unthrottleTimeout = setTimeout(() => {
+          this.mustThrottle = false;
+          this.unthrottleTimeout = undefined;
+        }, this.unthrottleAfterTime);
       }
       throw new Error(
         'RequestQueue.fetch should have returned a valid response or thrown before reaching this point'
       );
     };
 
-    while (this.concurrentTasks >= this.maxConcurrentTasks) {
+    while (
+      this.concurrentTasks >= this.maxConcurrentTasks ||
+      this.mustThrottle
+    ) {
       // wait before processing this task because there are too many queries already
-      log(`Not launching yet because ${this.concurrentTasks}`);
+      // also dont allow adding more tasks if the server is struggling (throttling)
+      // we use throttleTime here to be in some kind of order of magnitude similar
+      // to the throttle time, although this is a bit unrelated
       await new Promise(r => setTimeout(r, this.throttleTime));
     }
     this.concurrentTasks++;
