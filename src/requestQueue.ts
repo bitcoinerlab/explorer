@@ -181,12 +181,24 @@ export class RequestQueue {
             hardErrorAttempts >= this.maxAttemptsForHardErrors - 1
           ) {
             this.concurrentTasks--;
+            //Fetch failed. Now this error must be rethrown.
+            //Befor that, if this was the last task, disable throttling after
+            //unthrottleAfterTime to prevent an infinite loop in the while() on
+            //the next call. See below: while(mustThrottle === true)...
+            if (this.concurrentTasks === 0) {
+              if (this.unthrottleTimeout) clearTimeout(this.unthrottleTimeout);
+              this.unthrottleTimeout = setTimeout(() => {
+                this.mustThrottle = false;
+                this.unthrottleTimeout = undefined;
+              }, this.unthrottleAfterTime);
+            }
             console.warn(
               `Max attempts reached soft ${softErrorAttempts + 1} / hard ${
                 hardErrorAttempts + 1
               } - rethrowing error. Consider reducing rate limits and/or increasing maxAttemptsForSoftErrors & maxAttemptsForSoftErrors.`
             );
-            throw error; //not going to try again - rethrow original error
+            //Not going to try again - rethrow original error
+            throw error;
           } else {
             softErrorAttempts++;
             hardErrorAttempts++;
