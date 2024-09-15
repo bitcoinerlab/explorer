@@ -22,27 +22,34 @@ Depending on the specific client you wish to use (`Electrum` or `Esplora`), ther
 #### Using the Electrum Client
 
 1. **Install Required Modules**:
+
    ```bash
    npm install @bitcoinerlab/explorer react-native-tcp-socket
    ```
 
 2. **Eject from Expo (if in use)**:
+
    ```bash
    npx expo prebuild
    cd ios && pod install && cd ..
    ```
 
-3. **Set Up Global Variables**:
+3. **Shim `net` & `tls` by adding these lines to your `package.json`:**
+
+```json
+"react-native": {
+  "net": "react-native-tcp-socket",
+  "tls": "react-native-tcp-socket"
+ }
+```
+
+4. **Set Up Global Variables**:
    Create an `electrumSupport.js` file that you must import at the entry point of your application (before any other imports). This file should contain the following code:
 
    ```javascript
-   global.net = { Socket };
-   global.tls = { connect };
+   global.net = require('react-native-tcp-socket');
+   global.tls = require('react-native-tcp-socket');
    ```
-
-   For the definitions of `Socket` and `connect`, refer to:
-   - [Socket Definition](https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/net.js)
-   - [Connect Definition](https://github.com/BlueWallet/BlueWallet/blob/master/blue_modules/tls.js)
 
 #### Using the Esplora Client
 
@@ -57,7 +64,7 @@ To address this:
    ```
 
 2. **Integrate the Polyfill**:
-   
+
    At the top of your entry file (e.g., `index.js` or `App.js`), include:
 
    ```javascript
@@ -81,8 +88,8 @@ The following methods are shared in all implementations:
 - `fetchTxHistory({ address?: string; scriptHash?: string; })`: Acquires the transaction history for a specific address or script hash. The function returns a promise that resolves to an array of transaction histories. Each entry is an object that contains:
   - `txId: string`
   - `blockHeight: number`
-  - `irreversible: boolean` 
-  Note: They're typically returned in blockchain order. But there's a known [issue with Esplora](https://github.com/Blockstream/esplora/issues/165) where transactions from the same block might not maintain this order.
+  - `irreversible: boolean`
+    Note: They're typically returned in blockchain order. But there's a known [issue with Esplora](https://github.com/Blockstream/esplora/issues/165) where transactions from the same block might not maintain this order.
 - `fetchFeeEstimates()`: Obtain fee predictions based on confirmation targets. It returns an object where keys are confirmation targets and values are the projected feerate (measured in sat/vB).
 - `fetchBlockHeight()`: Determine the current block tip height.
 - `push(txHex: string)`: Submit a transaction in hex format.
@@ -134,6 +141,7 @@ async () => {
   //...
 };
 ```
+
 Note that the `EsploraExplorer` and `ElectrumExplorer` classes accept optional parameters `irrevConfThresh` and `maxTxPerScriptPubKey`, which correspond to the number of confirmations required to consider a transaction as irreversible (defaults to 3) and the maximum number of transactions per address that are allowed (defaults to 1000). You can set a larger `maxTxPerScriptPubKey` if you expect to be working with addresses that have been highly reused, at the cost of having worse performance. Note that many Electrum servers will already return at most 1000 transactions per script hash anyway, so consider using an Esplora server or an Electrum server that supports a large number of transactions if this is of your interest.
 
 ## API Documentation
@@ -145,7 +153,6 @@ npm run docs
 ```
 
 However, if you'd prefer to skip this step, the API documentation has already been compiled and is available for reference at [bitcoinerlab.com/modules/explorer/api](https://bitcoinerlab.com/modules/explorer/api).
-
 
 ## Authors and Contributors
 
