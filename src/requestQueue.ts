@@ -133,6 +133,7 @@ export class RequestQueue {
           const response = await fetch(...args);
 
           const isSoftError =
+            response.status === 403 || //esplora sometimes return forbidden!?!?
             response.status === 429 ||
             response.status === 500 ||
             //501 is not implemented, don't add this one
