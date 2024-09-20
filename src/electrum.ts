@@ -416,7 +416,10 @@ export class ElectrumExplorer implements Explorer {
 
     const transactionHistory = history.map(({ tx_hash, height }) => {
       const txId = tx_hash;
-      const blockHeight: number = height || 0;
+      //Electrum returns -1 for mempool, however we use blockHeight = 0 to
+      //denote mempool
+      const blockHeight: number =
+        parseInt(height) === -1 ? 0 : parseInt(height);
       if (blockHeight > this.#tipBlockHeight) {
         console.warn(
           `tx ${tx_hash} block height ${blockHeight} larger than the tip ${this.#tipBlockHeight}`
