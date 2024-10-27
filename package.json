@@ -2,15 +2,12 @@
   "name": "@bitcoinerlab/explorer",
   "description": "Bitcoin Blockchain Explorer: Client Interface featuring Esplora and Electrum Implementations.",
   "homepage": "https://github.com/bitcoinerlab/explorer",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
   "eslintConfig": {
-    "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig",
-    "ignorePatterns": [
-      "src/electrum-client.d.ts"
-    ]
+    "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
     "preset": "@bitcoinerlab/configs"
@@ -18,8 +15,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json --exclude ./src/electrum-client.d.ts",
-    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json --exclude ./src/electrum-client.d.ts",
+    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
+    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
     "build:test": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json",
     "build": "npm run build:src && npm run build:test",
@@ -52,7 +49,7 @@
     "regtest-client": "^0.2.1"
   },
   "dependencies": {
-    "bitcoinjs-lib": "^6.1.3",
-    "electrum-client": "github:BlueWallet/rn-electrum-client#1bfe3cc4249d5440b816baac942b0cfa921eebf9"
+    "@bitcoinerlab/electrum-client": "^1.0.1",
+    "bitcoinjs-lib": "^6.1.3"
   }
 }

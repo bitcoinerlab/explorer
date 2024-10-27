@@ -1,6 +1,6 @@
 import net from 'net';
 import tls from 'tls';
-import ElectrumClient from 'electrum-client';
+import ElectrumClient from '@bitcoinerlab/electrum-client';
 import { checkFeeEstimates } from './checkFeeEstimates';
 //API: https://electrumx.readthedocs.io/en/latest/protocol-methods.html
 
