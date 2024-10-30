@@ -100,12 +100,16 @@ export class EsploraExplorer implements Explorer {
    * Checks server connectivity by attempting to fetch the current block height.
    * Returns `true` if successful, otherwise `false`.
    */
-  async isConnected(): Promise<boolean> {
-    try {
-      await this.fetchBlockHeight();
-      return true;
-    } catch {}
-    return false;
+  async isConnected(
+    requestNetworkConfirmation: boolean = true
+  ): Promise<boolean> {
+    if (requestNetworkConfirmation) {
+      try {
+        await this.fetchBlockHeight();
+        return true;
+      } catch {}
+      return false;
+    } else return true;
   }
   async close() {
     return;

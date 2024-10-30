@@ -40,10 +40,11 @@ export interface Explorer {
    * respond to requests.
    *
    * @async
+   * @param {boolean} [requestNetworkConfirmation=true] When `true`, this checks the network to confirm if the connection is active. When `false`, it only verifies that all required initializations, like calling `connect()` for Electrum clients, have been completed.
    * @returns {Promise<boolean>} Promise resolving to `true` if the server is
    * reachable and responding; otherwise, `false`.
    */
-  isConnected(): Promise<boolean>;
+  isConnected(requestNetworkConfirmation?: boolean): Promise<boolean>;
 
   /**
    * Close the connection.

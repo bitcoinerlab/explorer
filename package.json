@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/explorer",
   "description": "Bitcoin Blockchain Explorer: Client Interface featuring Esplora and Electrum Implementations.",
   "homepage": "https://github.com/bitcoinerlab/explorer",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
@@ -49,7 +49,7 @@
     "regtest-client": "^0.2.1"
   },
   "dependencies": {
-    "@bitcoinerlab/electrum-client": "^1.0.2",
+    "@bitcoinerlab/electrum-client": "^1.0.3",
     "bitcoinjs-lib": "^6.1.3"
   }
 }

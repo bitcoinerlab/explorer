@@ -139,9 +139,7 @@ export class ElectrumExplorer implements Explorer {
    * Implements {@link Explorer#connect}.
    */
   async connect(): Promise<void> {
-    if (this.#client) {
-      throw new Error('Client already connected.');
-    }
+    if (await this.isConnected()) throw new Error('Client already connected.');
     this.#client = new ElectrumClient(
       netModule,
       this.#protocol === 'ssl' ? tlsModule : false,
@@ -151,18 +149,16 @@ export class ElectrumExplorer implements Explorer {
     );
     if (!this.#client)
       throw new Error(`Cannot create an ElectrumClient with current params`);
-    this.#client.onError = e => {
-      console.warn('Electrum error:', e.message);
-    };
-    this.#client.onClose = hadError => {
-      if (hadError) console.warn('Electrum closed with error.');
-      this.#client = undefined;
-    };
     try {
-      await this.#client.initElectrum({
-        client: 'bitcoinerlab',
-        version: '1.4'
-      });
+      await this.#client.initElectrum(
+        {
+          client: 'bitcoinerlab',
+          version: '1.4'
+        },
+        //don't let it handle auto-reconnect. Handling reconnection here
+        //in #pingInterval and/or from the libraries using @bitcoinerlab/explorer
+        { maxRetry: 0, callback: null }
+      );
       this.#client.subscribe.on(
         'blockchain.headers.subscribe',
         (headers: Array<{ height: number; hex: string }>) => {
@@ -176,27 +172,46 @@ export class ElectrumExplorer implements Explorer {
       const header = await this.#client.blockchainHeaders_subscribe();
       this.#updateBlockTipHeight(header);
     } catch (error: unknown) {
-      throw new Error(`Failed to init Electrum: ${getErrorMsg(error)}`);
+      //The socket is init in the constructor. The error catched is after the
+      //socket has been init. Here we get an error if electrum server cannot
+      //be found in that port, so close the socket
+      try {
+        await this.close(); //hide possible socket errors
+      } catch (err) {
+        console.warn('Error while closing connection:', getErrorMsg(error));
+      }
+      throw new Error(
+        `ElectrumClient failed to connect: ${getErrorMsg(error)}`
+      );
     }
 
-    // Ping every minute to keep connection alive. Reconnect on error.
+    // Ping every minute to keep connection alive.
+    // This function will never throw since it cannot be handled
+    // In case of connection errors, users will get them on any next function
+    // call
     this.#pingInterval = setInterval(async () => {
-      if (!this.#client) {
-        await this.connect();
-        if (!this.#client)
-          throw new Error(`Unrecoverable connection to Electrum`);
-      }
+      this.#getClientOrThrow();
+      let shouldReconnect = false;
       try {
-        await this.#client.server_ping();
+        if (this.#client) await this.#client.server_ping();
       } catch (error: unknown) {
-        // Ping failed, stop pinging and reconnect
-        await this.close();
+        shouldReconnect = true;
         console.warn(
-          'Reconnecting in 0.5s after ping error:',
+          'Closing connection and shouldReconnecting in 0.5s after ping error:',
           getErrorMsg(error)
         );
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await this.connect();
+      }
+      if (shouldReconnect) {
+        try {
+          await this.close(); //hide possible socket errors
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await this.connect();
+        } catch (error) {
+          console.warn(
+            'Error while reconnecting connection while pinging the electrum server.',
+            getErrorMsg(error)
+          );
+        }
       }
     }, 60 * 1000); // 60 * 1000 ms = 1 minute
   }
@@ -211,7 +226,7 @@ export class ElectrumExplorer implements Explorer {
     if (blockStatus && blockStatus.irreversible) return blockStatus;
     if (blockHeight > this.#tipBlockHeight) return;
 
-    const client = await this.#getClient();
+    const client = this.#getClientOrThrow();
     const headerHex = await client.blockchainBlock_header(blockHeight);
     //cache header info to skip queries in fetchBlockStatus
     blockStatus = this.#updateBlockStatusMap(blockHeight, headerHex);
@@ -224,36 +239,37 @@ export class ElectrumExplorer implements Explorer {
    *  Checks server connectivity by sending a ping. Returns `true` if the ping
    * is successful, otherwise `false`.
    */
-  async isConnected(): Promise<boolean> {
+  async isConnected(
+    requestNetworkConfirmation: boolean = true
+  ): Promise<boolean> {
     if (this.#client === undefined) return false;
-    try {
-      await this.#client.server_ping();
-      return true;
-    } catch {}
-    return false;
+    else {
+      if (requestNetworkConfirmation) {
+        try {
+          await this.#client.server_ping();
+          return true;
+        } catch {}
+        return false;
+      } else return true;
+    }
   }
 
   /**
    * Implements {@link Explorer#close}.
    */
   async close(): Promise<void> {
-    if (this.#client) {
+    if (this.#pingInterval) {
       clearInterval(this.#pingInterval);
       this.#pingInterval = undefined;
-      await this.#client.close();
     }
+    if (!this.#client) console.warn('Client was already closed');
+    else this.#client.close();
     this.#client = undefined;
   }
 
-  async #getClient(): Promise<ElectrumClient> {
+  #getClientOrThrow(): ElectrumClient {
     if (this.#client) return this.#client;
-    else {
-      //Give it one more change in case we're trying to recover from an error
-      //during ping...
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (this.#client) return this.#client;
-      else throw new Error(`Electrum client not connected.`);
-    }
+    else throw new Error(`Electrum client not connected.`);
   }
 
   #updateBlockStatusMap(blockHeight: number, headerHex: string): BlockStatus {
@@ -289,10 +305,6 @@ export class ElectrumExplorer implements Explorer {
     }
   }
 
-  //async #getBlockHeight() {
-  //  return this.#tipBlockHeight;
-  //}
-
   /**
    * Implements {@link Explorer#fetchAddress}.
    * */
@@ -317,13 +329,13 @@ export class ElectrumExplorer implements Explorer {
   }> {
     let balance, history;
     try {
-      let client = await this.#getClient();
+      let client = this.#getClientOrThrow();
       balance = await client.blockchainScripthash_getBalance(scriptHash);
       /** get_history returns:
        * height
        * txid
        */
-      client = await this.#getClient();
+      client = this.#getClientOrThrow();
       history = await client.blockchainScripthash_getHistory(scriptHash);
     } catch (error: unknown) {
       throw new Error(
@@ -354,7 +366,7 @@ export class ElectrumExplorer implements Explorer {
     for (const target of T) {
       //100000 = 10 ^ 8 sats/BTC / 10 ^3 bytes/kbyte
       try {
-        const client = await this.#getClient();
+        const client = this.#getClientOrThrow();
         const fee = await client.blockchainEstimatefee(target);
         feeEstimates[target] = 100000 * fee;
       } catch (error: unknown) {
@@ -374,7 +386,7 @@ export class ElectrumExplorer implements Explorer {
   async fetchBlockHeight(): Promise<number> {
     //Get's the client even if we don't need to use it. We call this so that it
     //throws if it's not connected (and this.#tipBlockHeight is erroneous)
-    await this.#getClient();
+    this.#getClientOrThrow();
     if (this.#tipBlockHeight === undefined)
       throw new Error(
         `Error: block tip height has not been retrieved yet. Probably not connected`
@@ -402,7 +414,7 @@ export class ElectrumExplorer implements Explorer {
     //This line below may throw even with a #txs than #maxTxPerScriptPubKey:
     let history;
     try {
-      const client = await this.#getClient();
+      const client = this.#getClientOrThrow();
       history = await client.blockchainScripthash_getHistory(scriptHash);
     } catch (error: unknown) {
       throw new Error(
@@ -445,7 +457,7 @@ export class ElectrumExplorer implements Explorer {
    */
   async fetchTx(txId: string): Promise<string> {
     try {
-      const client = await this.#getClient();
+      const client = this.#getClientOrThrow();
       return await client.blockchainTransaction_get(txId);
     } catch (error: unknown) {
       throw new Error(
@@ -463,7 +475,7 @@ export class ElectrumExplorer implements Explorer {
    */
   async push(txHex: string): Promise<string> {
     try {
-      const client = await this.#getClient();
+      const client = this.#getClientOrThrow();
       const txId = await client.blockchainTransaction_broadcast(txHex);
 
       if (!txId) {
