@@ -79,6 +79,7 @@ function defaultElectrumServer(network: Network = networks.bitcoin): {
 }
 
 export class ElectrumExplorer implements Explorer {
+  #timeout: number;
   #irrevConfThresh: number;
   #tipBlockHeight!: number;
   #maxTxPerScriptPubKey: number;
@@ -97,7 +98,8 @@ export class ElectrumExplorer implements Explorer {
     protocol,
     network = networks.bitcoin,
     irrevConfThresh = IRREV_CONF_THRESH,
-    maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY
+    maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY,
+    timeout = 0
   }: {
     host?: string;
     port?: number;
@@ -105,7 +107,9 @@ export class ElectrumExplorer implements Explorer {
     network?: Network;
     irrevConfThresh?: number;
     maxTxPerScriptPubKey?: number;
+    timeout?: number;
   } = {}) {
+    this.#timeout = timeout;
     this.#irrevConfThresh = irrevConfThresh;
     this.#maxTxPerScriptPubKey = maxTxPerScriptPubKey;
     if (
@@ -157,7 +161,8 @@ export class ElectrumExplorer implements Explorer {
         },
         //don't let it handle auto-reconnect. Handling reconnection here
         //in #pingInterval and/or from the libraries using @bitcoinerlab/explorer
-        { maxRetry: 0, callback: null }
+        { maxRetry: 0, callback: null },
+        this.#timeout
       );
       this.#client.subscribe.on(
         'blockchain.headers.subscribe',
@@ -197,13 +202,13 @@ export class ElectrumExplorer implements Explorer {
       } catch (error: unknown) {
         shouldReconnect = true;
         console.warn(
-          'Closing connection and shouldReconnecting in 0.5s after ping error:',
+          'Closing connection and reconnecting in 0.5s after ping error:',
           getErrorMsg(error)
         );
       }
       if (shouldReconnect) {
         try {
-          await this.close(); //hide possible socket errors
+          if (await this.isConnected(false)) await this.close(); //hide possible socket errors
           await new Promise(resolve => setTimeout(resolve, 500));
           await this.connect();
         } catch (error) {

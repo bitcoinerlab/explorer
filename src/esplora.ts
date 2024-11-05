@@ -26,6 +26,7 @@ function isValidHttpUrl(string: string): boolean {
  * Implements an {@link Explorer} Interface for an Esplora server.
  */
 export class EsploraExplorer implements Explorer {
+  #timeout: number;
   #irrevConfThresh: number;
   #BLOCK_HEIGHT_CACHE_TIME: number = 3; //cache for 3 seconds at most
   #cachedTipBlockHeight: number = 0;
@@ -44,12 +45,14 @@ export class EsploraExplorer implements Explorer {
     //url = ESPLORA_MEMPOOLSPACE_URL,
     irrevConfThresh = IRREV_CONF_THRESH,
     maxTxPerScriptPubKey = MAX_TX_PER_SCRIPTPUBKEY,
-    requestQueueParams = undefined
+    requestQueueParams = undefined,
+    timeout = 0
   }: {
     url?: string;
     irrevConfThresh?: number;
     maxTxPerScriptPubKey?: number;
     requestQueueParams?: RequestQueueParams;
+    timeout?: number;
   } = {}) {
     this.#requestQueue = new RequestQueue(requestQueueParams);
     if (typeof url !== 'string' || !isValidHttpUrl(url)) {
@@ -57,20 +60,47 @@ export class EsploraExplorer implements Explorer {
         'Specify a valid URL for Esplora and nothing else. Note that the url can include the port: http://api.example.com:8080/api'
       );
     }
+    this.#timeout = timeout;
     this.#url = url;
     this.#irrevConfThresh = irrevConfThresh;
     this.#maxTxPerScriptPubKey = maxTxPerScriptPubKey;
   }
 
   async #esploraFetch(...args: Parameters<typeof fetch>): Promise<Response> {
-    const response = await this.#requestQueue.fetch(...args);
-    if (!response.ok) {
-      const errorDetails = await response.text();
-      throw new Error(
-        `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
+    const fetchPromise = this.#requestQueue.fetch(...args);
+
+    if (this.#timeout > 0) {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error(`Request timed out after ${this.#timeout} ms.`)),
+          this.#timeout
+        )
       );
+
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+      // Check if the response came from the fetch promise and validate it
+      if (response instanceof Response && !response.ok) {
+        const errorDetails = await response.text();
+        throw new Error(
+          `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
+        );
+      }
+
+      return response;
+    } else {
+      const response = await fetchPromise;
+
+      if (!response.ok) {
+        const errorDetails = await response.text();
+        throw new Error(
+          `Failed request: ${errorDetails}. Status code: ${response.status} (${response.statusText}). URL: ${response.url}.`
+        );
+      }
+
+      return response;
     }
-    return response;
   }
 
   async #esploraFetchJson(...args: Parameters<typeof fetch>): Promise<unknown> {
