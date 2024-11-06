@@ -159,9 +159,7 @@ export class ElectrumExplorer implements Explorer {
           client: 'bitcoinerlab',
           version: '1.4'
         },
-        //don't let it handle auto-reconnect. Handling reconnection here
-        //in #pingInterval and/or from the libraries using @bitcoinerlab/explorer
-        { maxRetry: 0, callback: null },
+        { maxRetry: 1000, callback: null },
         this.#timeout
       );
       this.#client.subscribe.on(
@@ -190,7 +188,7 @@ export class ElectrumExplorer implements Explorer {
       );
     }
 
-    // Ping every minute to keep connection alive.
+    // Ping every few seconds to keep connection alive.
     // This function will never throw since it cannot be handled
     // In case of connection errors, users will get them on any next function
     // call
@@ -202,23 +200,23 @@ export class ElectrumExplorer implements Explorer {
       } catch (error: unknown) {
         shouldReconnect = true;
         console.warn(
-          'Closing connection and reconnecting in 0.5s after ping error:',
+          'Closing connection and reconnecting in 1s after ping error:',
           getErrorMsg(error)
         );
       }
       if (shouldReconnect) {
         try {
           if (await this.isConnected(false)) await this.close(); //hide possible socket errors
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           await this.connect();
         } catch (error) {
           console.warn(
-            'Error while reconnecting connection while pinging the electrum server.',
+            'Error while reconnecting during interval pinging:',
             getErrorMsg(error)
           );
         }
       }
-    }, 60 * 1000); // 60 * 1000 ms = 1 minute
+    }, 14 * 1000); // 14 * 1000 ms = 14 seconds
   }
 
   /**
