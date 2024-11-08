@@ -368,12 +368,24 @@ export class ElectrumExplorer implements Explorer {
     const feeEstimates: { [target: number]: number } = {};
     for (const target of T) {
       //100000 = 10 ^ 8 sats/BTC / 10 ^3 bytes/kbyte
+      //Don't throw. Instead try twice just in case the fist try was a spuripus error.
+      //The reason for not throwing is blockchainEstimatefee throws
+      //even if the call is successful but for some reason the electrum server
+      //cannot provide the fee for a certain target time. This has been observed to
+      //occur on electrs on testnet.
+      let fee: number | undefined = undefined;
       try {
         const client = this.#getClientOrThrow();
-        const fee = await client.blockchainEstimatefee(target);
+        fee = await client.blockchainEstimatefee(target);
         feeEstimates[target] = 100000 * fee;
-      } catch (error: unknown) {
-        throw new Error(`Failed to fetch fee estimates: ${getErrorMsg(error)}`);
+      } catch (error: unknown) {}
+      if (fee === undefined) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 100)); //sleep 0.1 sec
+          const client = this.#getClientOrThrow();
+          fee = await client.blockchainEstimatefee(target);
+          feeEstimates[target] = 100000 * fee;
+        } catch (error: unknown) {}
       }
     }
     checkFeeEstimates(feeEstimates);
