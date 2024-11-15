@@ -123,7 +123,7 @@ import { EsploraExplorer } from '@bitcoinerlab/explorer';
   const feeEstimates = await explorer.fetchFeeEstimates();
 
   // Close the connection
-  await explorer.close();
+  explorer.close();
 })();
 ```
 

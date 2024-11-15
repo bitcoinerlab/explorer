@@ -221,8 +221,8 @@ for (const regtestExplorer of regtestExplorers) {
         ) //Push a problematic tx that has "Missing inputs"
       ).rejects.toThrow(/bad-txns-inputs-missingorspent/);
     });
-    test('close', async () => {
-      await explorer.close();
+    test('close', () => {
+      explorer.close();
     });
   });
 }
@@ -300,8 +300,8 @@ describe('Explorer: Tests with public servers', () => {
       const blockStatus2 = await explorer.fetchBlockStatus(847612);
       expect(blockStatus2).toBe(blockStatus); // Checks reference equality
     }, 30000);
-    test(`close ${explorerName}`, async () => {
-      await explorer.close();
+    test(`close ${explorerName}`, () => {
+      explorer.close();
       //await new Promise(r => setTimeout(r, 9000));
     }, 10000);
   }
