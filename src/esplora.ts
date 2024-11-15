@@ -26,6 +26,7 @@ function isValidHttpUrl(string: string): boolean {
  * Implements an {@link Explorer} Interface for an Esplora server.
  */
 export class EsploraExplorer implements Explorer {
+  #closed: boolean = true;
   #timeout: number;
   #irrevConfThresh: number;
   #BLOCK_HEIGHT_CACHE_TIME: number = 3; //cache for 3 seconds at most
@@ -64,6 +65,7 @@ export class EsploraExplorer implements Explorer {
     this.#url = url;
     this.#irrevConfThresh = irrevConfThresh;
     this.#maxTxPerScriptPubKey = maxTxPerScriptPubKey;
+    this.#closed = true;
   }
 
   async #esploraFetch(...args: Parameters<typeof fetch>): Promise<Response> {
@@ -123,6 +125,7 @@ export class EsploraExplorer implements Explorer {
   }
 
   async connect() {
+    this.#closed = false;
     return;
   }
   /**
@@ -130,18 +133,18 @@ export class EsploraExplorer implements Explorer {
    * Checks server connectivity by attempting to fetch the current block height.
    * Returns `true` if successful, otherwise `false`.
    */
-  async isConnected(
-    requestNetworkConfirmation: boolean = true
-  ): Promise<boolean> {
-    if (requestNetworkConfirmation) {
-      try {
-        await this.fetchBlockHeight();
-        return true;
-      } catch {}
-      return false;
-    } else return true;
+  async isConnected(): Promise<boolean> {
+    try {
+      await this.fetchBlockHeight();
+      return true;
+    } catch {}
+    return false;
   }
-  async close() {
+  isClosed(): boolean {
+    return this.#closed;
+  }
+  close() {
+    this.#closed = true;
     return;
   }
 

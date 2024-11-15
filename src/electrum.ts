@@ -143,7 +143,12 @@ export class ElectrumExplorer implements Explorer {
    * Implements {@link Explorer#connect}.
    */
   async connect(): Promise<void> {
-    if (await this.isConnected()) throw new Error('Client already connected.');
+    if (this.#pingInterval)
+      throw new Error(
+        'Client was not successfully closed. Prev connection is still pinging.'
+      );
+    if (!this.isClosed())
+      throw new Error('Client previously connected and never closed.');
     this.#client = new ElectrumClient(
       netModule,
       this.#protocol === 'ssl' ? tlsModule : false,
@@ -179,7 +184,7 @@ export class ElectrumExplorer implements Explorer {
       //socket has been init. Here we get an error if electrum server cannot
       //be found in that port, so close the socket
       try {
-        await this.close(); //hide possible socket errors
+        if (!this.isClosed()) this.close();
       } catch (err) {
         console.warn('Error while closing connection:', getErrorMsg(error));
       }
@@ -187,12 +192,14 @@ export class ElectrumExplorer implements Explorer {
         `ElectrumClient failed to connect: ${getErrorMsg(error)}`
       );
     }
+    if (!this.#client) throw new Error('Client should exist at this point');
 
     // Ping every few seconds to keep connection alive.
     // This function will never throw since it cannot be handled
     // In case of connection errors, users will get them on any next function
     // call
     this.#pingInterval = setInterval(async () => {
+      const pingInterval = this.#pingInterval;
       this.#getClientOrThrow();
       let shouldReconnect = false;
       try {
@@ -204,11 +211,15 @@ export class ElectrumExplorer implements Explorer {
           getErrorMsg(error)
         );
       }
-      if (shouldReconnect) {
+      //Dont allow 2 instances of #pingInterval. #pingInterval is set on connection
+      if (shouldReconnect && pingInterval === this.#pingInterval) {
         try {
-          if (await this.isConnected(false)) await this.close(); //hide possible socket errors
+          if (this.isClosed()) throw new Error('Pinging a closed connection');
+          this.close();
           await new Promise(resolve => setTimeout(resolve, 1000));
-          await this.connect();
+          //connect may have been set externally while sleeping, check first
+          if (this.isClosed() && pingInterval === this.#pingInterval)
+            await this.connect();
         } catch (error) {
           console.warn(
             'Error while reconnecting during interval pinging:',
@@ -242,31 +253,32 @@ export class ElectrumExplorer implements Explorer {
    *  Checks server connectivity by sending a ping. Returns `true` if the ping
    * is successful, otherwise `false`.
    */
-  async isConnected(
-    requestNetworkConfirmation: boolean = true
-  ): Promise<boolean> {
-    if (this.#client === undefined) return false;
+  async isConnected(): Promise<boolean> {
+    if (!this.#client) return false;
     else {
-      if (requestNetworkConfirmation) {
-        try {
-          await this.#client.server_ping();
-          return true;
-        } catch {}
-        return false;
-      } else return true;
+      try {
+        await this.#client.server_ping();
+        return true;
+      } catch {}
+      return false;
     }
+  }
+  isClosed(): boolean {
+    return !this.#client;
   }
 
   /**
    * Implements {@link Explorer#close}.
    */
-  async close(): Promise<void> {
+  close(): void {
     if (this.#pingInterval) {
       clearInterval(this.#pingInterval);
       this.#pingInterval = undefined;
     }
     if (!this.#client) console.warn('Client was already closed');
-    else this.#client.close();
+    else {
+      this.#client.close();
+    }
     this.#client = undefined;
   }
 
