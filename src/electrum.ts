@@ -186,6 +186,7 @@ export class ElectrumExplorer implements Explorer {
       try {
         if (!this.isClosed()) this.close();
       } catch (err) {
+        void err;
         console.warn('Error while closing connection:', getErrorMsg(error));
       }
       throw new Error(
@@ -390,14 +391,18 @@ export class ElectrumExplorer implements Explorer {
         const client = this.#getClientOrThrow();
         fee = await client.blockchainEstimatefee(target);
         feeEstimates[target] = 100000 * fee;
-      } catch (error: unknown) {}
+      } catch (error: unknown) {
+        void error;
+      }
       if (fee === undefined) {
         try {
           await new Promise(resolve => setTimeout(resolve, 100)); //sleep 0.1 sec
           const client = this.#getClientOrThrow();
           fee = await client.blockchainEstimatefee(target);
           feeEstimates[target] = 100000 * fee;
-        } catch (error: unknown) {}
+        } catch (error: unknown) {
+          void error;
+        }
       }
     }
     checkFeeEstimates(feeEstimates);
