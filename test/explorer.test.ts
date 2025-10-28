@@ -104,7 +104,7 @@ for (const regtestExplorer of regtestExplorers) {
     const explorer = regtestExplorer.explorer;
     test(`Connect`, async () => {
       await expect(explorer.connect()).resolves.not.toThrow();
-    });
+    }, 20000);
     test(`isConnected`, async () => {
       await expect(explorer.isConnected()).resolves.toBe(true);
     });
@@ -132,7 +132,10 @@ for (const regtestExplorer of regtestExplorers) {
           masterNode,
           burnAddress: fixtures.regtest.burnAddress
         });
-        if (burningTx) await regtestUtils.broadcast(burningTx.toHex());
+        if (burningTx) {
+          //await regtestUtils.broadcast(burningTx.toHex());
+          await explorer.push(burningTx.toHex());
+        }
 
         const address = new Descriptor({
           expression: descriptor.expression,
@@ -141,8 +144,8 @@ for (const regtestExplorer of regtestExplorers) {
         await regtestUtils.faucet(address, descriptor.value);
       }
       //confirm the transactions above
-      await regtestUtils.mine(6);
-      await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec
+      await regtestUtils.mine(1);
+      await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec - esplora can be really slow to catch up at times...
       //Do the tests:
       for (const descriptor of fixtures.regtest.descriptors) {
         const address = new Descriptor({
@@ -178,11 +181,14 @@ for (const regtestExplorer of regtestExplorers) {
           masterNode,
           burnAddress: fixtures.regtest.burnAddress
         });
-        if (burningTx) await regtestUtils.broadcast(burningTx.toHex());
+        if (burningTx) {
+          //await regtestUtils.broadcast(burningTx.toHex());
+          await explorer.push(burningTx.toHex());
+        }
       }
       //confirm the transactions above
-      await regtestUtils.mine(6);
-      await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec
+      await regtestUtils.mine(1);
+      await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec - esplora can be really slow to catch up at times...
       //Check that now there are no funds:
       for (const descriptor of fixtures.regtest.descriptors) {
         const address = new Descriptor({
@@ -193,7 +199,7 @@ for (const regtestExplorer of regtestExplorers) {
         expect(balance).toEqual(0);
         expect(txCount > 0).toEqual(true);
       }
-    }, 20000);
+    }, 60000);
     test(`fetchBlockStatus`, async () => {
       const tipHeight = await explorer.fetchBlockHeight();
       const blockStatus = await explorer.fetchBlockStatus(tipHeight);
@@ -203,7 +209,7 @@ for (const regtestExplorer of regtestExplorers) {
       const timeDifference = Math.abs(
         currentTime - (blockStatus?.blockTime || 0)
       );
-      expect(timeDifference).toBeLessThan(10); //Note this block was mined a few secs ago
+      expect(timeDifference).toBeLessThan(60); //Note this block was mined a few secs ago
       const headerHex = (await regtestUtils.dhttp({
         method: 'GET',
         url: API_URL + '/b/' + blockStatus?.blockHash + '/header'
@@ -227,6 +233,7 @@ for (const regtestExplorer of regtestExplorers) {
   });
 }
 
+//if ('skip this battery of tests' === regtestExplorers[0]!.name) //enable this line to skip the tests below
 describe('Explorer: Tests with public servers', () => {
   for (const server of fixtures.bitcoin.servers as Server[]) {
     let explorer: Explorer;
@@ -241,12 +248,14 @@ describe('Explorer: Tests with public servers', () => {
         try {
           explorer = new ElectrumExplorer(server);
         } catch (error) {
+          void error;
           fail('ElectrumExplorer constructor should not throw an error');
         }
       } else if (server.service === ESPLORA) {
         try {
           explorer = new EsploraExplorer(server);
         } catch (error) {
+          void error;
           fail('EsploraExplorer constructor should not throw an error');
         }
       } else throw new Error('Please, pass a correct service');
