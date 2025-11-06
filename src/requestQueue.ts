@@ -66,6 +66,7 @@ const getRandomizedThrottleTime = (meanTime: number) => {
 };
 
 /**
+ * @hidden
  * Manages rate-limited fetch requests with automated throttling control. This
  * class is designed to handle situations where rapid or concurrent fetch
  * requests might exceed a server's rate limits or encounter network errors,
