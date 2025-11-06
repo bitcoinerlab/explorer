@@ -412,7 +412,6 @@ export class ElectrumExplorer implements Explorer {
   /**
    * Implements {@link Explorer#fetchBlockHeight}.
    * Get's current block height.
-   * @async
    * @returns A number representing the current height.
    */
   async fetchBlockHeight(): Promise<number> {
@@ -500,7 +499,6 @@ export class ElectrumExplorer implements Explorer {
 
   /**
    * Push a raw Bitcoin transaction to the network.
-   * @async
    * @param txHex A raw Bitcoin transaction in hexadecimal string format.
    * @returns The transaction ID (`txId`) if the transaction was broadcasted successfully.
    * @throws {Error} If the transaction is invalid or fails to be broadcasted.

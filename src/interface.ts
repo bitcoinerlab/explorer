@@ -21,7 +21,6 @@ export const MAX_TX_PER_SCRIPTPUBKEY = 1000;
 export interface Explorer {
   /**
    * Connect to the server.
-   * @async
    */
   connect(): Promise<void>;
 
@@ -39,7 +38,6 @@ export interface Explorer {
    * Thus, for Esplora, `isConnected` effectively checks if the server can
    * respond to requests.
    *
-   * @async
    * @returns {Promise<boolean>} Promise resolving to `true` if the server is
    * reachable and responding; otherwise, `false`.
    */
@@ -59,7 +57,6 @@ export interface Explorer {
   /**
    * Get the balance of an address and find out whether the address ever
    * received some coins.
-   * @async
    * @param address A Bitcoin address
    * @returns An object with 'balance' & confirmedTxCount properties.
    */
@@ -73,7 +70,6 @@ export interface Explorer {
   /**
    * Get the balance of a scriptHash and find out whether the scriptHash ever
    * received some coins.
-   * @async
    * @param scriptHash A Bitcoin scriptHash
    * @returns An object with 'balance' & txCount properties.
    */
@@ -118,7 +114,6 @@ export interface Explorer {
    * and the value is the estimated feerate (in sat/vB).
    *
    * The available confirmation targets are `1-25, 144, 504` and `1008` blocks.
-   * @async
    * @returns An object where the key is the confirmation target (in number of blocks).
    */
   fetchFeeEstimates(): Promise<Record<string, number>>;
@@ -128,21 +123,18 @@ export interface Explorer {
    * of a certain `blockHeight`.
    *
    * Returns `undefined` if this block height has not been mined yet.
-   * @async
    * @returns `BlockStatus | undefined`;
    */
   fetchBlockStatus(blockHeight: number): Promise<BlockStatus | undefined>;
 
   /**
    * Get's current block height (blockchain tip).
-   * @async
    * @returns A number representing the current height.
    */
   fetchBlockHeight(): Promise<number>;
 
   /**
    * Push a raw Bitcoin transaction to the network.
-   * @async
    * @param txHex A raw Bitcoin transaction in hexadecimal string format.
    * @returns The transaction ID (`txId`) if the transaction was broadcasted successfully.
    * @throws {Error} If the transaction is invalid or fails to be broadcasted.
