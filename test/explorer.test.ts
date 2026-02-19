@@ -19,7 +19,7 @@ import type { BIP32Interface } from 'bip32';
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
 import * as descriptors from '@bitcoinerlab/descriptors';
 import { mnemonicToSeedSync } from 'bip39';
-const { Descriptor, BIP32 } = descriptors.DescriptorsFactory(secp256k1);
+const { Output, BIP32 } = descriptors.DescriptorsFactory(secp256k1);
 import { RegtestUtils } from 'regtest-client';
 const API_URL = 'http://127.0.0.1:8080/1';
 const regtestUtils = new RegtestUtils();
@@ -51,9 +51,11 @@ async function burnTx({
   burnAddress: string;
 }) {
   const psbt = new Psbt({ network });
-  const descs = [];
-  const descriptor = new Descriptor({ expression, network });
-  const address = descriptor.getAddress();
+  const finalizeInputs: Array<
+    (params: { psbt: Psbt; validate?: boolean | undefined }) => void
+  > = [];
+  const output = new Output({ descriptor: expression, network });
+  const address = output.getAddress();
 
   //const unspents = await regtestUtils.unspents(address); broken. See: https://github.com/bitcoinjs/regtest-server/issues/23
 
@@ -62,18 +64,24 @@ async function burnTx({
   );
   const unspents = await response.json();
 
-  let value = 0;
+  let value = 0n;
   if (unspents.length === 0) return null;
   for (const unspent of unspents) {
     const tx = await regtestUtils.fetch(unspent.txid);
-    descriptor.updatePsbt({ psbt, vout: unspent.vout, txHex: tx.txHex });
-    descs.push(descriptor);
-    value += unspent.value;
+    const finalizeInput = output.updatePsbtAsInput({
+      psbt,
+      vout: unspent.vout,
+      txHex: tx.txHex
+    });
+    finalizeInputs.push(finalizeInput);
+    value += BigInt(unspent.value);
   }
-  value -= 10000; //fee
+  value -= 10000n; //fee
   psbt.addOutput({ address: burnAddress, value });
   descriptors.signers.signBIP32({ psbt, masterNode });
-  descriptors.finalizePsbt({ psbt, descriptors: descs });
+  for (const finalizeInput of finalizeInputs) {
+    finalizeInput({ psbt });
+  }
   return psbt.extractTransaction();
 }
 
@@ -137,8 +145,8 @@ for (const regtestExplorer of regtestExplorers) {
           await explorer.push(burningTx.toHex());
         }
 
-        const address = new Descriptor({
-          expression: descriptor.expression,
+        const address = new Output({
+          descriptor: descriptor.expression,
           network
         }).getAddress();
         await regtestUtils.faucet(address, descriptor.value);
@@ -148,8 +156,8 @@ for (const regtestExplorer of regtestExplorers) {
       await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec - esplora can be really slow to catch up at times...
       //Do the tests:
       for (const descriptor of fixtures.regtest.descriptors) {
-        const address = new Descriptor({
-          expression: descriptor.expression,
+        const address = new Output({
+          descriptor: descriptor.expression,
           network
         }).getAddress();
         const { balance, txCount } = await explorer.fetchAddress(address);
@@ -191,8 +199,8 @@ for (const regtestExplorer of regtestExplorers) {
       await new Promise(resolve => setTimeout(resolve, 5000)); //sleep 5 sec - esplora can be really slow to catch up at times...
       //Check that now there are no funds:
       for (const descriptor of fixtures.regtest.descriptors) {
-        const address = new Descriptor({
-          expression: descriptor.expression,
+        const address = new Output({
+          descriptor: descriptor.expression,
           network
         }).getAddress();
         const { balance, txCount } = await explorer.fetchAddress(address);
@@ -214,8 +222,7 @@ for (const regtestExplorer of regtestExplorers) {
         method: 'GET',
         url: API_URL + '/b/' + blockStatus?.blockHash + '/header'
       })) as string;
-      const headerBuffer = Buffer.from(headerHex, 'hex');
-      const header = Block.fromBuffer(headerBuffer);
+      const header = Block.fromHex(headerHex);
       expect(blockStatus?.blockTime).toBe(header.timestamp);
       expect(blockStatus?.blockHash).toBe(header.getId());
       expect(blockStatus?.blockHeight).toBe(tipHeight);
