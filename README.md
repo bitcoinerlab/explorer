@@ -5,8 +5,8 @@
 ## Features
 
 - A consistent interface for interacting with different explorer services
-- Connect and disconnect methods to manage connections to the services
-- Fetch balance and usage information of a Bitcoin address
+- Connection lifecycle methods: `connect`, `isConnected`, `isClosed`, `close`
+- Fetch confirmed/unconfirmed balances and tx counts for addresses and script hashes
 - Fetch fee estimates based on confirmation targets
 
 ## Installation
@@ -14,6 +14,10 @@
 ```bash
 npm install @bitcoinerlab/explorer
 ```
+
+## Requirements
+
+- Node.js 18 or newer
 
 ### Installation in React-Native
 
@@ -80,10 +84,14 @@ This library provides a unified interface for interacting with Bitcoin Blockchai
 The following methods are shared in all implementations:
 
 - `connect()`: Establish a connection to the server.
+- `isConnected()`: Check if the server is reachable and responsive.
+- `isClosed()`: Check whether the client is currently closed.
 - `close()`: Terminate the connection.
-- `fetchAddress(address: string)`: Retrieve the balance and usage details of a Bitcoin address. This returns an object with:
-  - `used`: A boolean that denotes if the address has received any coins in the past, even if its current balance is zero.
-  - `balance`: The present balance of the address, measured in satoshis.
+- `fetchAddress(address: string)`: Retrieve confirmed/unconfirmed balance and transaction count details for a Bitcoin address. This returns an object with:
+  - `balance`: Confirmed balance in satoshis.
+  - `txCount`: Number of confirmed transactions.
+  - `unconfirmedBalance`: Unconfirmed balance delta in satoshis.
+  - `unconfirmedTxCount`: Number of unconfirmed transactions.
 - `fetchScriptHash(scriptHash: string)`: Acts similar to `fetchAddress` but for a [script hash](https://electrumx.readthedocs.io/en/latest/protocol-basics.html#script-hashes).
 - `fetchTxHistory({ address?: string; scriptHash?: string; })`: Acquires the transaction history for a specific address or script hash. The function returns a promise that resolves to an array of transaction histories. Each entry is an object that contains:
   - `txId: string`
@@ -91,7 +99,9 @@ The following methods are shared in all implementations:
   - `irreversible: boolean`
     Note: They're typically returned in blockchain order. But there's a known [issue with Esplora](https://github.com/Blockstream/esplora/issues/165) where transactions from the same block might not maintain this order.
 - `fetchFeeEstimates()`: Obtain fee predictions based on confirmation targets. It returns an object where keys are confirmation targets and values are the projected feerate (measured in sat/vB).
+- `fetchBlockStatus(blockHeight: number)`: Retrieve block metadata at a given height (`blockHash`, `blockTime`, `irreversible`), or `undefined` if that height is not mined yet.
 - `fetchBlockHeight()`: Determine the current block tip height.
+- `fetchTx(txId: string)`: Fetch a raw transaction in hex format.
 - `push(txHex: string)`: Submit a transaction in hex format.
 
 ### Examples
@@ -109,15 +119,31 @@ import { EsploraExplorer } from '@bitcoinerlab/explorer';
   // Connect to the Esplora server
   await explorer.connect();
 
-  // Fetch UTXOs of an address (returns a Promise)
-  const utxos = await explorer.fetchUtxos(
-    'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
-  );
-
   // Fetch address information (returns a Promise)
   const addressInfo = await explorer.fetchAddress(
     'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
   );
+
+  // Fetch script-hash information (returns a Promise)
+  const scriptHashInfo = await explorer.fetchScriptHash(
+    '<scripthash>'
+  );
+
+  // Fetch transaction history by address
+  const txHistory = await explorer.fetchTxHistory({
+    address:
+      'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
+  });
+
+  // Fetch raw transaction hex
+  const txHex = await explorer.fetchTx('<txid>');
+
+  // Broadcast a signed transaction
+  // const txId = await explorer.push('<raw-transaction-hex>');
+
+  // Check connected status
+  const alive = await explorer.isConnected();
+  console.log({ addressInfo, scriptHashInfo, txHistory, txHex, alive });
 
   // Fetch fee estimates (returns a Promise)
   const feeEstimates = await explorer.fetchFeeEstimates();
@@ -132,17 +158,21 @@ To use the `ElectrumExplorer` class, follow a similar pattern but with different
 ```javascript
 import { ElectrumExplorer } from '@bitcoinerlab/explorer';
 
-async () => {
+(async () => {
   const explorer = new ElectrumExplorer({
     host: 'electrum.example.com',
     port: 50002,
     protocol: 'ssl'
   });
-  //...
-};
+
+  await explorer.connect();
+  const tipHeight = await explorer.fetchBlockHeight();
+  console.log({ tipHeight });
+  explorer.close();
+})();
 ```
 
-Note that the `EsploraExplorer` and `ElectrumExplorer` classes accept optional parameters `irrevConfThresh` and `maxTxPerScriptPubKey`, which correspond to the number of confirmations required to consider a transaction as irreversible (defaults to 3) and the maximum number of transactions per address that are allowed (defaults to 1000). You can set a larger `maxTxPerScriptPubKey` if you expect to be working with addresses that have been highly reused, at the cost of having worse performance. Note that many Electrum servers will already return at most 1000 transactions per script hash anyway, so consider using an Esplora server or an Electrum server that supports a large number of transactions if this is of your interest.
+`EsploraExplorer` and `ElectrumExplorer` both accept `irrevConfThresh`, `maxTxPerScriptPubKey`, and `timeout`. `EsploraExplorer` also accepts `requestQueueParams`. `irrevConfThresh` controls the number of confirmations required to consider a transaction irreversible (default: `3`). `maxTxPerScriptPubKey` sets an upper bound on history length per address/script hash (default: `1000`). `timeout` is in milliseconds and defaults to `0` (disabled). If you expect heavily reused addresses, you may increase `maxTxPerScriptPubKey`, at the cost of performance.
 
 ## API Documentation
 
@@ -192,7 +222,7 @@ Before finalizing and committing your code, it's essential to make sure all test
 2. Utilize the [Express-based bitcoind manager](https://github.com/bitcoinjs/regtest-server) which should be operational at `127.0.0.1:8080`.
 3. An Electrum server and an Esplora server are required, both indexing the regtest node.
 
-To streamline this setup, you can use the Docker image, `bitcoinerlab/tester`, which comes preconfigured with the required services. The Docker image can be found under **Dockerfile for bitcoinerlab/tester**. When you run the test script using:
+To streamline this setup, you can use the Docker image, `bitcoinerlab/tape`, which comes preconfigured with the required services. When you run the test script using:
 
 ```bash
 npm test
