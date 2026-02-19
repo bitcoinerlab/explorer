@@ -52,24 +52,35 @@ function getErrorMsg(error: unknown): string {
   }
 }
 
+function isNetwork(network: Network, reference: Network): boolean {
+  return (
+    network.bech32 === reference.bech32 &&
+    network.bip32.public === reference.bip32.public &&
+    network.bip32.private === reference.bip32.private &&
+    network.pubKeyHash === reference.pubKeyHash &&
+    network.scriptHash === reference.scriptHash &&
+    network.wif === reference.wif
+  );
+}
+
 function defaultElectrumServer(network: Network = networks.bitcoin): {
   host: string;
   port: number;
   protocol: 'ssl' | 'tcp';
 } {
-  if (network === networks.bitcoin) {
+  if (isNetwork(network, networks.bitcoin)) {
     return {
       host: ELECTRUM_BLOCKSTREAM_HOST,
       port: ELECTRUM_BLOCKSTREAM_PORT,
       protocol: ELECTRUM_BLOCKSTREAM_PROTOCOL
     };
-  } else if (network === networks.testnet) {
+  } else if (isNetwork(network, networks.testnet)) {
     return {
       host: ELECTRUM_BLOCKSTREAM_TESTNET_HOST,
       port: ELECTRUM_BLOCKSTREAM_TESTNET_PORT,
       protocol: ELECTRUM_BLOCKSTREAM_TESTNET_PROTOCOL
     };
-  } else if (network === networks.regtest) {
+  } else if (isNetwork(network, networks.regtest)) {
     return {
       host: ELECTRUM_LOCAL_REGTEST_HOST,
       port: ELECTRUM_LOCAL_REGTEST_PORT,
@@ -292,8 +303,7 @@ export class ElectrumExplorer implements Explorer {
     let blockStatus = this.#blockStatusMap.get(blockHeight);
     if (blockStatus && blockStatus.irreversible) return blockStatus;
 
-    const headerBuffer = Buffer.from(headerHex, 'hex');
-    const header = Block.fromBuffer(headerBuffer);
+    const header = Block.fromHex(headerHex);
 
     const blockHash = header.getId();
     const blockTime = header.timestamp;
