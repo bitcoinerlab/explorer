@@ -28,7 +28,9 @@
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
-    "test": "npm run lint && npm run build && npm run ensureTester && NODE_OPTIONS=\"--experimental-fetch\" jest",
+    "test": "npm run lint && npm run build && npm run test:local",
+    "test:local": "npm run ensureTester && node scripts/wait-for-tape.cjs && node --require ./test/local-network.cjs ./node_modules/jest/bin/jest.js --runInBand",
+    "test:public": "npm run lint && npm run build && jest --runInBand --testMatch '**/*.public.js'",
     "prepublishOnly": "rm -rf dist/ && npm test"
   },
   "repository": {

@@ -65,19 +65,19 @@ export const fixtures = {
         service: ELECTRUM,
         host: 'electrum.bitaroo.net',
         port: 50002,
-        protocol: 'ssl'
+        protocol: 'ssl' as const
       },
       {
         service: ELECTRUM,
         host: 'electrum3.bluewallet.io',
         port: 50001,
-        protocol: 'tcp'
+        protocol: 'tcp' as const
       },
       {
         service: ELECTRUM,
         host: 'electrum2.bluewallet.io',
         port: 443,
-        protocol: 'ssl'
+        protocol: 'ssl' as const
       },
       {
         //will default to blockstream or mempool.space electrum
