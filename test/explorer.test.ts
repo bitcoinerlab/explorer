@@ -52,7 +52,7 @@ async function burnTx({
 }) {
   const psbt = new Psbt({ network });
   const finalizeInputs: Array<
-    (params: { psbt: Psbt; validate?: boolean | undefined }) => void
+    (params: { psbt: Psbt; validate?: boolean }) => void
   > = [];
   const output = new Output({ descriptor: expression, network });
   const address = output.getAddress();

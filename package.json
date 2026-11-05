@@ -10,7 +10,13 @@
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
-    "preset": "@bitcoinerlab/configs"
+    "preset": "@bitcoinerlab/configs",
+    "transform": {
+      "^.+node_modules/@noble/.+\\.js$": "<rootDir>/jest-esm-transform.cjs"
+    },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(@bitcoinerlab/secp256k1|@noble)/)"
+    ]
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -43,13 +49,13 @@
   ],
   "devDependencies": {
     "@bitcoinerlab/configs": "^2.0.0",
-    "@bitcoinerlab/descriptors": "^3.0.2",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
-    "bip39": "^3.1.0",
+    "@bitcoinerlab/descriptors": "^3.2.0",
+    "@bitcoinerlab/secp256k1": "^2.0.0",
+    "bip39": "^3.1.2",
     "regtest-client": "^0.2.1"
   },
   "dependencies": {
     "@bitcoinerlab/electrum-client": "^1.0.4",
-    "bitcoinjs-lib": "^7.0.1"
+    "bitcoinjs-lib": "^7.0.5"
   }
 }
