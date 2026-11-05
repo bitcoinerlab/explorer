@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/explorer",
   "description": "Bitcoin Blockchain Explorer: Client Interface featuring Esplora and Electrum Implementations.",
   "homepage": "https://github.com/bitcoinerlab/explorer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
@@ -10,7 +10,13 @@
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
-    "preset": "@bitcoinerlab/configs"
+    "preset": "@bitcoinerlab/configs",
+    "transform": {
+      "^.+node_modules/@noble/.+\\.js$": "<rootDir>/jest-esm-transform.cjs"
+    },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(@bitcoinerlab/secp256k1|@noble)/)"
+    ]
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,7 +28,9 @@
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
-    "test": "npm run lint && npm run build && npm run ensureTester && NODE_OPTIONS=\"--experimental-fetch\" jest",
+    "test": "npm run lint && npm run build && npm run test:local",
+    "test:local": "npm run ensureTester && node scripts/wait-for-tape.cjs && node --require ./test/local-network.cjs ./node_modules/jest/bin/jest.js --runInBand",
+    "test:public": "npm run lint && npm run build && jest --runInBand --testMatch '**/*.public.js'",
     "prepublishOnly": "rm -rf dist/ && npm test"
   },
   "repository": {
@@ -43,13 +51,13 @@
   ],
   "devDependencies": {
     "@bitcoinerlab/configs": "^2.0.0",
-    "@bitcoinerlab/descriptors": "^3.0.2",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
-    "bip39": "^3.1.0",
+    "@bitcoinerlab/descriptors": "^3.2.1",
+    "@bitcoinerlab/secp256k1": "^2.0.0",
+    "bip39": "^3.1.2",
     "regtest-client": "^0.2.1"
   },
   "dependencies": {
     "@bitcoinerlab/electrum-client": "^1.0.4",
-    "bitcoinjs-lib": "^7.0.1"
+    "bitcoinjs-lib": "^7.0.5"
   }
 }
